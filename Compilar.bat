@@ -1,7 +1,7 @@
 @echo off
 cd /d "%~dp0"
 setlocal
-".venv\Scripts\python.exe" -m pip install pyinstaller
+".venv\Scripts\python.exe" -m pip install -r requirements-monitoring.txt pyinstaller
 if errorlevel 1 exit /b 1
 ".venv\Scripts\python.exe" tools\make_icon.py
 if errorlevel 1 exit /b 1

@@ -3,6 +3,8 @@
 Versão consolidada do aplicativo Android para acompanhar uploads do DriveFlow em
 uma ou mais máquinas, pareadas pelo QR code gerado pelo software Windows.
 
+Desktop compatível: [DriveFlow Windows 1.1.0](https://github.com/gustavotoigo-max/DriveFlow/releases/tag/v1.1.0).
+
 ## Recursos
 
 - Monitoramento do arquivo atual, progresso, bytes enviados, velocidade, estimativa,

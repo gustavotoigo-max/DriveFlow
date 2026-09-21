@@ -1,5 +1,14 @@
 # Histórico de versões
 
+## Desktop v1.1.0 — 21/09/2026
+
+- Executável portátil inclui as dependências de monitoramento Firebase e QR code.
+- Telemetria opcional no Firestore, independente do OAuth e do upload ao Drive.
+- Pareamento por QR de uso único com validade de cinco minutos e revogação de acesso.
+- Compatível com Android Monitor 0.2.2 e Firebase Spark, sem notificações push.
+- Preserva configurações, credenciais e fila locais da versão anterior.
+- Smoke test valida Firestore/gRPC e QR sem rede.
+
 ## Android Monitor v0.2.2 — 21/09/2026
 
 - Monitoramento de várias máquinas por pareamento via QR code de uso único.

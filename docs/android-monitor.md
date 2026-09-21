@@ -35,8 +35,8 @@ Aparência e Atualizar conexão ficam em Configurações. O scanner continua na 
 1. Em Firebase Authentication, habilite o provedor **Anônimo**.
 2. Em Firestore → Regras (ou Google Cloud Firestore → Segurança), publique o conteúdo
    completo de `firebase/firestore.rules`. A cópia em `config/firestore.rules` é idêntica.
-3. Reabra o Windows pelo código atualizado (`Iniciar.bat`). Executáveis antigos
-   precisam ser recompilados; não contêm o novo QR de versão 2.
+3. Abra o [desktop 1.1.0](https://github.com/gustavotoigo-max/DriveFlow/releases/tag/v1.1.0)
+   ou o código atualizado (`Iniciar.bat`). O executável 1.1.0 inclui o QR de versão 2.
 4. Instale o APK 0.2.2 no celular. Pode substituir a versão 0.1.0 de teste.
 5. Windows → Configurações → Conectar celular. Mantenha o QR aberto durante o scan.
 6. Android → Escanear QR code → confirme o computador.
@@ -75,8 +75,8 @@ da identidade do app ficam desativados.
 ## Compilar e testar
 
 Abra `android/` no Android Studio, sincronize e compile. JDK do Studio 25, Gradle
-9.1.0, SDK 36.1 e Build Tools 36.1.0 foram utilizados. O JSON já está em
-`android/app/google-services.json`.
+9.1.0, SDK 36.1 e Build Tools 36.1.0 foram utilizados. Baixe a configuração do seu app Android no Firebase e salve em
+`android/app/google-services.json`. Esse arquivo local não acompanha o repositório.
 
 ```powershell
 Set-Location android

@@ -51,7 +51,19 @@ def main():
     window.show()
     if smoke_output:
         def finish_smoke():
-            smoke_output.write_text(json.dumps({'ok': True, 'version': __version__, 'title': window.windowTitle(), 'pages': window.pages.count(), 'icon': not window.windowIcon().isNull(), 'assets': all(not icon.isNull() for icon in window.action_icons.values())}), encoding='utf-8')
+            # Check optional packaged dependencies without accessing credentials or the network.
+            from google.cloud import firestore
+            from google.auth.credentials import AnonymousCredentials
+            import qrcode
+            client = firestore.Client(project='driveflow-smoke', credentials=AnonymousCredentials())
+            reference = client.collection('computers').document('smoke')
+            transport = client._firestore_api
+            qr = qrcode.QRCode()
+            qr.add_data('driveflow-smoke')
+            qr.make(fit=True)
+            monitoring_dependencies = bool(reference.path and transport and qr.get_matrix())
+            client.close()
+            smoke_output.write_text(json.dumps({'ok': True, 'monitoring_dependencies': monitoring_dependencies, 'version': __version__, 'title': window.windowTitle(), 'pages': window.pages.count(), 'icon': not window.windowIcon().isNull(), 'assets': all(not icon.isNull() for icon in window.action_icons.values())}), encoding='utf-8')
             window.close()
         QTimer.singleShot(500, finish_smoke)
     code = app.exec()
