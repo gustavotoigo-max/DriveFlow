@@ -1,0 +1,9 @@
+{
+  "remote_monitoring": {
+    "enabled": false,
+    "computer_id": "desktop-principal",
+    "computer_name": "Desktop Principal",
+    "update_interval_seconds": 5,
+    "firebase_credentials": "config/firebase-service-account.json"
+  }
+}

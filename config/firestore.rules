@@ -1,0 +1,55 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function own(uid) { return request.auth != null && request.auth.uid == uid; }
+    function fresh(code) {
+      return code.protocol == 'spark-v2' && !('usedBy' in code) && code.expiresAt > request.time;
+    }
+    function proof(hash, id, uid) {
+      let before = get(/databases/$(database)/documents/pairing_codes/$(hash)).data;
+      let after = getAfter(/databases/$(database)/documents/pairing_codes/$(hash)).data;
+      return hash is string && hash.matches('[a-f0-9]{64}') && fresh(before)
+        && before.computer_id == id && after.usedBy == uid && after.usedAt == request.time;
+    }
+    match /pairing_codes/{hash} {
+      // The unguessable hash is a bearer capability; collection listing is forbidden.
+      allow get: if request.auth != null && resource.data.protocol == 'spark-v2'
+        && resource.data.expiresAt > request.time
+        && (!('usedBy' in resource.data) || resource.data.usedBy == request.auth.uid);
+      allow update: if request.auth != null && fresh(resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usedBy', 'usedAt'])
+        && request.resource.data.usedBy == request.auth.uid
+        && request.resource.data.usedAt == request.time
+        && getAfter(/databases/$(database)/documents/readers/$(request.auth.uid)/computers/$(resource.data.computer_id)).data.codeHash == hash
+        && getAfter(/databases/$(database)/documents/readers/$(request.auth.uid)/computers/$(resource.data.computer_id)).data.pairedAt == request.time
+        && getAfter(/databases/$(database)/documents/computers/$(resource.data.computer_id)/readers/$(request.auth.uid)).data.codeHash == hash;
+      allow list, create, delete: if false;
+    }
+    match /computers/{id} {
+      allow get: if request.auth != null && exists(/databases/$(database)/documents/readers/$(request.auth.uid)/computers/$(id));
+      allow list, write: if false;
+      match /readers/{uid} {
+        allow create, update: if own(uid)
+          && request.resource.data.keys().hasOnly(['deviceName', 'codeHash', 'pairedAt'])
+          && request.resource.data.deviceName is string && request.resource.data.deviceName.size() <= 100
+          && request.resource.data.pairedAt == request.time
+          && proof(request.resource.data.codeHash, id, uid)
+          && getAfter(/databases/$(database)/documents/readers/$(uid)/computers/$(id)).data.codeHash == request.resource.data.codeHash;
+        allow delete: if own(uid);
+        allow read: if false;
+      }
+    }
+    match /readers/{uid}/computers/{id} {
+      allow read, delete: if own(uid);
+      allow create: if own(uid)
+        && request.resource.data.keys().hasOnly(['computer_name', 'codeHash', 'pairedAt'])
+        && request.resource.data.pairedAt == request.time
+        && proof(request.resource.data.codeHash, id, uid)
+        && request.resource.data.computer_name == get(/databases/$(database)/documents/pairing_codes/$(request.resource.data.codeHash)).data.computer_name
+        && getAfter(/databases/$(database)/documents/computers/$(id)/readers/$(uid)).data.codeHash == request.resource.data.codeHash
+        && getAfter(/databases/$(database)/documents/computers/$(id)/readers/$(uid)).data.pairedAt == request.time;
+      allow update: if false;
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}
