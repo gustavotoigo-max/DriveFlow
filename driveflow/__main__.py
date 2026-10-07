@@ -74,6 +74,12 @@ def main():
     db.conn.close()
     if smoke_dir:
         smoke_dir.cleanup()
+    if window.update_job:
+        from .updater import launch_install
+        try:
+            launch_install(window.update_job)
+        except OSError:
+            QMessageBox.warning(None, 'Atualização', 'Não foi possível iniciar o atualizador. O executável anterior foi preservado. Abra o DriveFlow novamente.')
     return code
 
 

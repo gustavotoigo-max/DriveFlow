@@ -1,5 +1,24 @@
 # Histórico de versões
 
+## Desktop v1.2.0 — 07/10/2026
+
+- Consulta automática da pasta aberta e destino do Drive a cada 30 segundos, sem sobreposição de consultas.
+- Falhas de consultas automáticas são registradas sem interromper o usuário com diálogos.
+- Verificação de releases estáveis do desktop na abertura e a cada seis horas, além do botão em Configurações.
+- Download em segundo plano com tamanho e SHA-256 verificados contra a release oficial.
+- Instalação pela interface, após pausar uploads, com teste de inicialização, cópia da versão anterior e reinício.
+- Credenciais e fila são preservadas. A instalação inicial desta versão é manual.
+- Inclui a correção da atualização pendente descrita na versão 1.1.1.
+
+## Desktop v1.1.1 — 07/10/2026
+
+- Corrige perda de atualização da pasta do Drive quando a conclusão de um upload
+  pede uma recarga durante uma consulta que falha. A recarga pendente agora também
+  é executada após erro, atualizando o tamanho exibido sem reabrir o aplicativo.
+- Respostas antigas não interferem após troca de conta ou reconstrução da árvore.
+- A repetição consome somente a solicitação pendente, sem ciclo infinito de tentativas.
+- Motor de upload, retomada, autenticação e Android permanecem inalterados.
+
 ## Desktop v1.1.0 — 21/09/2026
 
 - Executável portátil inclui as dependências de monitoramento Firebase e QR code.

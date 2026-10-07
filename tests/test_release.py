@@ -116,3 +116,86 @@ def test_simultaneous_charts_render_in_each_theme(tmp_path, monkeypatch):
     page.sample([], set(), 'Spotify')
     assert not page.plots
     page.close()
+
+
+def test_drive_refresh_queued_during_failed_request_is_not_lost():
+    app = QApplication.instance() or QApplication([])
+    requests = []
+    tree = DriveTree(lambda fn, cb, **kw: requests.append((cb, kw['on_error'])), None)
+    tree.reset_tree()
+    # The last upload finishes while the initial folder request is in flight.
+    tree.refresh_folder('root')
+    requests[0][1]('temporary failure')
+    assert len(requests) == 2
+    requests[1][0]([{'id': 'last', 'name': 'last.zip', 'mimeType': 'application/zip', 'size': '2048'}])
+    assert tree.nodes['last'].text(1) == '2.0 KiB'
+    assert not tree.loading and not tree.reload_pending
+    tree.close()
+
+
+def test_drive_refresh_failure_from_previous_account_does_not_retry():
+    app = QApplication.instance() or QApplication([])
+    requests = []
+    tree = DriveTree(lambda fn, cb, **kw: requests.append((cb, kw['on_error'])), None)
+    tree.reset_tree()
+    tree.refresh_folder('root')
+    old_failure = requests[0][1]
+    tree.reset_tree()
+    old_failure('temporary failure')
+    assert len(requests) == 2
+    assert tree.loading == {'root'}
+    assert not tree.reload_pending
+    tree.close()
+
+
+def test_drive_queued_refresh_updates_existing_size_after_stale_response():
+    app = QApplication.instance() or QApplication([])
+    requests = []
+    tree = DriveTree(lambda fn, cb, **kw: requests.append((cb, kw['on_error'])), None)
+    tree.reset_tree()
+    old = {'id': 'last', 'name': 'last.zip', 'mimeType': 'application/zip', 'size': '0'}
+    requests[0][0]([old])
+    tree.refresh_folder('root')
+    tree.refresh_folder('root')
+    requests[1][0]([old])
+    assert len(requests) == 3
+    requests[2][0]([dict(old, size='4096')])
+    assert tree.nodes['last'].text(1) == '4.0 KiB'
+    assert not tree.loading and not tree.reload_pending
+    tree.close()
+
+
+def test_drive_failed_pending_refresh_does_not_retry_forever():
+    app = QApplication.instance() or QApplication([])
+    requests = []
+    tree = DriveTree(lambda fn, cb, **kw: requests.append((cb, kw['on_error'])), None)
+    tree.reset_tree()
+    tree.refresh_folder('root')
+    tree.refresh_folder('root')
+    requests[0][1]('offline')
+    assert len(requests) == 2
+    requests[1][1]('still offline')
+    assert len(requests) == 2
+    assert not tree.loading and not tree.reload_pending
+    tree.refresh_folder('root')
+    assert len(requests) == 3
+    tree.close()
+
+def test_watched_folders_deduplicate_and_skip_inflight_requests():
+    app = QApplication.instance() or QApplication([])
+    requests = []
+    tree = DriveTree(lambda fn, cb, **kw: requests.append((cb, kw)), None)
+    tree.reset_tree()
+    tree.set_destination('root')
+    tree.refresh_watched()
+    assert len(requests) == 1 and not tree.reload_pending
+    requests[0][0]([{'id': 'folder', 'name': 'Target', 'mimeType': FOLDER}])
+    tree.refresh_watched()
+    assert len(requests) == 2 and requests[-1][1]['silent']
+    requests[-1][0]([{'id': 'folder', 'name': 'Target', 'mimeType': FOLDER}])
+    tree.set_destination('folder')
+    tree.refresh_watched()
+    assert len(requests) == 4
+    tree.refresh_watched()
+    assert len(requests) == 4 and not tree.reload_pending
+    tree.close()

@@ -88,7 +88,18 @@ class DriveTree(QTreeWidget):
         if node:
             self.load(node, force=True)
 
-    def load(self, node, force=False):
+    def refresh_watched(self):
+        """Poll only the open folder and selected destination; never pile up requests."""
+        current = self.folder()
+        ids = {self.destination_id}
+        if current:
+            ids.add(current.data(0, Qt.ItemDataRole.UserRole)['id'])
+        for ident in ids:
+            node = self.nodes.get(ident)
+            if node is not None and ident not in self.loading:
+                self.load(node, force=True, silent=True)
+
+    def load(self, node, force=False, silent=False):
         row = node.data(0, Qt.ItemDataRole.UserRole)
         if not row or row['mimeType'] != FOLDER:
             return
@@ -103,9 +114,16 @@ class DriveTree(QTreeWidget):
         node.setToolTip(0, 'Carregando…')
 
         def failed(_):
-            if generation == self.generation:
-                self.loading.discard(ident)
-                node.setToolTip(0, 'Falha ao carregar. Clique em Atualizar para tentar novamente.')
+            if generation != self.generation or self.nodes.get(ident) is not node:
+                return
+            self.loading.discard(ident)
+            node.setToolTip(0, 'Falha ao carregar. Clique em Atualizar para tentar novamente.')
+            # Completion/manual refresh may have arrived during this failed request.
+            # Consume it on errors too, rather than leaving the last upload stale.
+            # Clear before retrying: another failure must not create a retry loop.
+            if ident in self.reload_pending:
+                self.reload_pending.discard(ident)
+                self.load(node, force=True)
 
         def loaded(rows):
             if generation != self.generation or self.nodes.get(ident) is not node:
@@ -144,4 +162,4 @@ class DriveTree(QTreeWidget):
                 self.reload_pending.discard(ident)
                 self.load(node, force=True)
 
-        self.task(lambda: self.with_drive(lambda drive: drive.children(ident)), loaded, on_error=failed)
+        self.task(lambda: self.with_drive(lambda drive: drive.children(ident)), loaded, on_error=failed, **({"silent": True} if silent else {}))

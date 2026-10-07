@@ -1,4 +1,5 @@
 import os
+import sys
 import threading
 from pathlib import Path
 
@@ -22,6 +23,7 @@ from .charts import ChartsPage, duration
 
 class Bridge(QObject):
     result = Signal(object, object, object)
+    update_progress = Signal(int)
 
 
 class MainWindow(QMainWindow):
@@ -34,6 +36,9 @@ class MainWindow(QMainWindow):
         self.auth_busy = False
         self.completed_ids = {x['id'] for x in db.all() if x['status'] == 'concluído'}
         self.closing = False
+        self.update_job = None
+        self.available_update = None
+        self.downloaded_update = None
         self.bridge = Bridge()
         self.bridge.result.connect(self.task_done)
         self.setWindowTitle(f'DriveFlow v{__version__} • Gerenciador de uploads')
@@ -140,6 +145,15 @@ class MainWindow(QMainWindow):
         self.timer.timeout.connect(self.refresh)
         self.timer.start(500)
         self.refresh()
+        self.folder_timer = QTimer(self)
+        self.folder_timer.timeout.connect(self.refresh_watched_folders)
+        self.folder_timer.start(30000)
+        if getattr(sys, 'frozen', False) and '--smoke-test' not in sys.argv:
+            self.update_timer = QTimer(self)
+            self.update_timer.timeout.connect(self.auto_check_update)
+            self.update_timer.start(6 * 60 * 60 * 1000)
+            QTimer.singleShot(20000, self.auto_check_update)
+        self.bridge.update_progress.connect(lambda value: self.update_status.setText(f'Baixando atualização: {value}%'))
         if auth.path.exists():
             self.task(auth.restore, lambda _: self.connected(), auth_task=True)
 
@@ -298,6 +312,16 @@ class MainWindow(QMainWindow):
         info.setWordWrap(True)
         box.addWidget(info)
         box.addWidget(button('Salvar configurações', self.save_settings, True))
+        box.addWidget(label('Pastas do Drive: atualização automática a cada 30 segundos. Arquivos locais acompanham as alterações do Windows.', 'muted'))
+        from .updater import last_result
+        self.update_status = label(f'Versão instalada: {__version__}\n{last_result()}', 'muted')
+        self.update_status.setWordWrap(True)
+        box.addWidget(self.update_status)
+        self.update_button = button('Verificar atualizações', self.check_update)
+        self.install_button = button('Baixar atualização', self.download_update)
+        self.install_button.setEnabled(False)
+        box.addWidget(self.update_button)
+        box.addWidget(self.install_button)
         layout.addWidget(frame)
         frame, box = self.panel()
         box.addWidget(label('Conexão e armazenamento local', 'section'))
@@ -315,6 +339,67 @@ class MainWindow(QMainWindow):
         scroll.setWidgetResizable(True)
         scroll.setWidget(page)
         return scroll
+
+    def refresh_watched_folders(self):
+        if self.auth.account_id and not self.closing and not self.auth_busy:
+            self.folders.refresh_watched()
+
+    def update_failed(self, error):
+        self.update_status.setText('Falha na atualização. Tente novamente; a versão atual foi preservada.')
+        self.update_button.setEnabled(True)
+        self.install_button.setEnabled(self.available_update is not None)
+
+    def auto_check_update(self):
+        if not self.closing and self.update_button.isEnabled() and not self.downloaded_update:
+            self.check_update(silent=True)
+
+    def check_update(self, silent=False):
+        from .updater import find_update
+        self.update_button.setEnabled(False)
+        self.install_button.setEnabled(False)
+        self.update_status.setText('Consultando versões do desktop no GitHub…')
+        def checked(release):
+            self.available_update = release
+            self.downloaded_update = None
+            self.update_button.setEnabled(True)
+            self.install_button.setText('Baixar atualização')
+            self.install_button.setEnabled(release is not None and getattr(sys, 'frozen', False))
+            self.update_status.setText(f'Versão {release["version"]} disponível.' if release else 'Você já está na versão mais recente disponível.')
+            if release and not getattr(sys, 'frozen', False):
+                self.update_status.setText('Atualização disponível. A instalação automática funciona no executável Windows; esta execução usa código-fonte.')
+        self.task(lambda: find_update(__version__), checked, on_error=self.update_failed, silent=silent)
+
+    def download_update(self):
+        from .updater import download_update, prepare_install
+        if self.downloaded_update:
+            if self.manager.running or self.busy:
+                self.notice('Pause os uploads e aguarde as operações em andamento antes de reiniciar para atualizar.')
+                return
+            if QMessageBox.question(self, 'Atualizar DriveFlow', 'Instalar a atualização e reiniciar? A fila e as credenciais serão preservadas; os uploads ficarão pausados.') != QMessageBox.StandardButton.Yes:
+                return
+            if self.manager.running or self.busy:
+                self.notice('Aguarde as operações em andamento e tente novamente.')
+                return
+            try:
+                self.update_job = prepare_install(self.downloaded_update, self.available_update, Path(sys.executable))
+            except Exception as exc:
+                self.db.event('', f'UPDATE_PREPARE_ERROR type={type(exc).__name__}')
+                self.notice('Não foi possível preparar a atualização. Confira a permissão de gravação na pasta do programa.')
+                return
+            self.close()
+            return
+        if not self.available_update:
+            return
+        self.update_button.setEnabled(False)
+        self.install_button.setEnabled(False)
+        def downloaded(path):
+            self.downloaded_update = path
+            self.update_status.setText('Download validado. Pause os uploads para instalar e reiniciar.')
+            self.install_button.setText('Instalar e reiniciar')
+            self.install_button.setEnabled(True)
+            self.update_button.setEnabled(True)
+        release = self.available_update
+        self.task(lambda: download_update(release, self.bridge.update_progress.emit), downloaded, on_error=self.update_failed)
 
     def select_firebase_credentials(self):
         path, _ = QFileDialog.getOpenFileName(self, 'Credencial de serviço Firebase', '', 'JSON (*.json)')
@@ -471,7 +556,7 @@ class MainWindow(QMainWindow):
         self.apply_theme()
         self.statusBar().showMessage('Configurações salvas. Blocos e tentativas serão aplicados aos próximos workers.', 6000)
 
-    def task(self, fn, callback, auth_task=False, on_error=None):
+    def task(self, fn, callback, auth_task=False, on_error=None, silent=False):
         self.busy += 1
         if auth_task:
             self.auth_busy = True
@@ -487,11 +572,12 @@ class MainWindow(QMainWindow):
                 except Exception:
                     pass
             finally:
-                self.bridge.result.emit((callback, auth_task, on_error), result, safe)
+                self.bridge.result.emit((callback, auth_task, on_error, silent), result, safe)
         threading.Thread(target=run, daemon=True).start()
 
     def task_done(self, context, result, error):
-        callback, auth_task, on_error = context
+        callback, auth_task, on_error = context[:3]
+        silent = context[3] if len(context) > 3 else False
         self.busy -= 1
         if auth_task:
             self.auth_busy = False
@@ -500,7 +586,8 @@ class MainWindow(QMainWindow):
         if error:
             if on_error:
                 on_error(error)
-            self.notice(error)
+            if not silent:
+                self.notice(error)
         else:
             callback(result)
 

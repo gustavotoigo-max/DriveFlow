@@ -1,13 +1,13 @@
 # Distribuições atuais
 
-- [Desktop Windows 1.1.0 — executável portátil](https://github.com/gustavotoigo-max/DriveFlow/releases/tag/v1.1.0).
+- [Desktop Windows 1.2.0 — executável portátil](https://github.com/gustavotoigo-max/DriveFlow/releases/tag/v1.2.0).
 - [Android Monitor 0.2.2 — APK compatível](https://github.com/gustavotoigo-max/DriveFlow/releases/tag/android-v0.2.2).
 
-O desktop 1.1.0 inclui Firebase e pareamento QR. Baixe o executável portátil, feche
+O desktop 1.2.0 inclui Firebase, pareamento QR, atualização automática de pastas e atualizador pela interface. Baixe o executável portátil, feche
 a versão anterior e abra o novo arquivo. Configurações e fila permanecem em
 `%LOCALAPPDATA%/DriveFlow`. As credenciais são configuradas separadamente e não
 acompanham os downloads. Veja [o guia de pareamento](docs/android-monitor.md).
-As seções v1.0.5 abaixo documentam a distribuição anterior.
+Veja [como atualizar pela interface](docs/atualizacoes.md). As seções v1.0.5 abaixo documentam a distribuição anterior.
 
 ## Monitoramento Firebase (código-fonte)
 
