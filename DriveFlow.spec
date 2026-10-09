@@ -6,6 +6,8 @@ version = runpy.run_path('driveflow/version.py')['__version__']
 numbers = tuple(int(x) for x in version.split('.')) + (0,)
 portable = os.environ.get('DRIVEFLOW_ONEFILE') == '1'
 version_info = VSVersionInfo(ffi=FixedFileInfo(filevers=numbers, prodvers=numbers, mask=0x3f, flags=0, OS=0x40004, fileType=1, subtype=0, date=(0,0)), kids=[StringFileInfo([StringTable('040904B0', [StringStruct('FileDescription', 'DriveFlow'), StringStruct('FileVersion', version), StringStruct('ProductName', 'DriveFlow'), StringStruct('ProductVersion', version)])]), VarFileInfo([VarStruct('Translation', [1033, 1200])])])
+# Optional Desktop OAuth client (never committed): enables "Entrar com Google".
+oauth_client = [('driveflow/oauth_client.json', 'driveflow')] if os.path.exists('driveflow/oauth_client.json') else []
 a = Analysis(
     ['run.py'],
     pathex=[],
@@ -13,7 +15,7 @@ a = Analysis(
     datas=[('driveflow/update_helper.ps1', 'driveflow'), ('upload.png', '.'), ('upload.ico', '.'), ('transferencias_24px.png', '.'),
            ('historico_24px.png', '.'), ('config_24px.png', '.'), ('lista_24px.png', '.'),
            ('graficos.svg', '.'), ('check.svg', '.'), ('play_24px.png', '.'),
-           ('pausa_24px.png', '.'), ('stop.png', '.'), ('remover.png', '.')],
+           ('pausa_24px.png', '.'), ('stop.png', '.'), ('remover.png', '.')] + oauth_client,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

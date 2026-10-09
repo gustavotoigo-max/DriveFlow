@@ -84,3 +84,27 @@ def test_diagnostics_do_not_include_request_secrets():
     result = str(safe_auth_error('Obter autorização', error))
     assert 'private-secret' not in result
     assert 'AUTH_ConnectionError' in result
+
+
+def test_bundled_client_is_optional_and_validated(tmp_path, monkeypatch):
+    import json
+    import driveflow.auth as auth_module
+    path = tmp_path / 'oauth_client.json'
+    monkeypatch.setattr(auth_module, 'BUNDLED_CLIENT', path)
+    assert auth_module.bundled_client() is None
+    path.write_text('{"web": {"client_id": "x"}}')
+    assert auth_module.bundled_client() is None
+    path.write_text('not json')
+    assert auth_module.bundled_client() is None
+    path.write_text(json.dumps(CONFIG))
+    assert auth_module.bundled_client() == CONFIG
+
+
+def test_login_accepts_bundled_client_config(tmp_path, monkeypatch):
+    monkeypatch.setenv('DRIVEFLOW_DATA_DIR', str(tmp_path))
+    auth = Auth()
+    with patch.object(DesktopFlow, 'run_local_server', return_value=object()) as local_server:
+        with patch.object(auth, 'identify'):
+            auth.login(CONFIG, full=True)
+    assert local_server.called
+    assert auth.reauth_required is False

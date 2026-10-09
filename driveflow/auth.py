@@ -13,6 +13,9 @@ from .drive import TemporaryError
 
 LIMITED = ['https://www.googleapis.com/auth/drive.file']
 FULL = ['https://www.googleapis.com/auth/drive']
+# Desktop OAuth client copied into the build by DriveFlow.spec. Google treats
+# installed-app secrets as non-confidential, but the file stays out of Git.
+BUNDLED_CLIENT = Path(__file__).with_name('oauth_client.json')
 
 
 class AuthError(ValueError):
@@ -88,6 +91,18 @@ def safe_auth_error(stage, exc):
     return AuthError(f'{stage}: {detail} [AUTH_{type(exc).__name__}]')
 
 
+def bundled_client():
+    """Return the client embedded in this build, or None to ask for a JSON."""
+    try:
+        config = json.loads(BUNDLED_CLIENT.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return None
+    client = config.get('installed') if isinstance(config, dict) else None
+    if not isinstance(client, dict) or not client.get('client_id') or not client.get('client_secret'):
+        return None
+    return config
+
+
 class Auth:
     def __init__(self):
         self.path = data_dir() / 'account.bin'
@@ -128,11 +143,12 @@ class Auth:
             raise safe_auth_error('Restaurar conexão', exc) from None
         return True
 
-    def login(self, path, full=False):
+    def login(self, client, full=False):
+        """client: path of an imported JSON, or the bundled client config."""
         stage = 'Ler credencial do aplicativo'
         previous = self.credentials, self.email, self.account_id, self.reauth_required, self.save_pending
         try:
-            config = json.loads(Path(path).read_text(encoding='utf-8'))
+            config = client if isinstance(client, dict) else json.loads(Path(client).read_text(encoding='utf-8'))
             if 'installed' not in config:
                 raise AuthError('Importe uma credencial OAuth do tipo Aplicativo para computador. [AUTH_CLIENT_TYPE]')
             flow = DesktopFlow.from_client_config(config, FULL if full else LIMITED, autogenerate_code_verifier=True)

@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QFrame, QHBox
     QListWidget, QListWidgetItem, QInputDialog, QPlainTextEdit, QDialog, QDialogButtonBox, QSizePolicy, QMenu, QLineEdit, QScrollArea)
 
 from .drive import Drive
-from .auth import AuthError
+from .auth import AuthError, bundled_client
 from .storage import data_dir
 from .theme import THEMES, stylesheet
 from .widgets import FileBrowser, label, button, size_text, themed_icon, SmoothProgressBar
@@ -125,7 +125,7 @@ class MainWindow(QMainWindow):
         dot_layout.addWidget(self.connection_dot)
         header.addWidget(dot_holder, 0, Qt.AlignmentFlag.AlignVCenter)
         self.update_connection_dot()
-        self.connect_btn = button('Conectar conta', self.connect_account)
+        self.connect_btn = button(self.login_text(), self.connect_account)
         header.addWidget(self.connect_btn, 0, Qt.AlignmentFlag.AlignVCenter)
         main.addLayout(header)
         main.addSpacing(6)
@@ -275,7 +275,7 @@ class MainWindow(QMainWindow):
         self.retries.setValue(self.db.setting('retries', 10))
         form.addRow('Máximo de tentativas por interrupção', self.retries)
         self.full_scope = QCheckBox('Acessar pastas existentes de todo o Drive no próximo login')
-        self.full_scope.setChecked(self.db.setting('full_scope', False))
+        self.full_scope.setChecked(self.db.setting('full_scope', True))
         form.addRow('Permissão de acesso', self.full_scope)
         from .firebase_monitor import default_config
         remote = self.db.setting('remote_monitoring')
@@ -325,10 +325,16 @@ class MainWindow(QMainWindow):
         layout.addWidget(frame)
         frame, box = self.panel()
         box.addWidget(label('Conexão e armazenamento local', 'section'))
-        note = label('Para conectar: crie um projeto no Google Cloud, habilite a Google Drive API e baixe um cliente OAuth do tipo Aplicativo para computador. '
-                     'No modo de teste, adicione sua conta como usuário de teste. Depois clique em Conectar conta e selecione o JSON.', 'muted')
+        if bundled_client():
+            text = ('Clique em Entrar com Google e escolha a conta no navegador. '
+                    'Para usar outro projeto Google Cloud, desconecte e importe um cliente OAuth do tipo Aplicativo para computador abaixo.')
+        else:
+            text = ('Para conectar: crie um projeto no Google Cloud, habilite a Google Drive API e baixe um cliente OAuth do tipo Aplicativo para computador. '
+                    'No modo de teste, adicione sua conta como usuário de teste. Depois clique em Conectar conta e selecione o JSON.')
+        note = label(text, 'muted')
         note.setWordWrap(True)
         box.addWidget(note)
+        box.addWidget(button('Entrar com cliente OAuth próprio (JSON)…', self.import_client))
         location = label(f'Fila, eventos e tokens protegidos pelo Windows:\n{data_dir()}', 'muted')
         location.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         box.addWidget(location)
@@ -615,15 +621,31 @@ class MainWindow(QMainWindow):
             self.account.setText('Desconectado')
             self.update_connection_dot()
             self.account.setToolTip('')
-            self.connect_btn.setText('Conectar conta')
+            self.connect_btn.setText(self.login_text())
             self.db.event('', 'ACCOUNT_DISCONNECTED_LOCALLY')
             return
         if self.auth.path.exists() and not self.auth.reauth_required:
             self.task(self.auth.restore, lambda _: self.connected(), auth_task=True)
             return
+        client = bundled_client()
+        if client is None:
+            self.import_client()
+            return
+        self.task(lambda: self.auth.login(client, self.db.setting('full_scope', True)), lambda _: self.connected(), auth_task=True)
+
+    @staticmethod
+    def login_text():
+        return 'Entrar com Google' if bundled_client() else 'Conectar conta'
+
+    def import_client(self):
+        if self.auth_busy:
+            return
+        if self.auth.account_id:
+            self.notice('Desconecte a conta atual antes de entrar com outro cliente OAuth.')
+            return
         path, _ = QFileDialog.getOpenFileName(self, 'Importar cliente OAuth Desktop', '', 'Credenciais Google (*.json)')
         if path:
-            self.task(lambda: self.auth.login(path, self.db.setting('full_scope', False)), lambda _: self.connected(), auth_task=True)
+            self.task(lambda: self.auth.login(path, self.db.setting('full_scope', True)), lambda _: self.connected(), auth_task=True)
 
     def connected(self):
         self.destination = None
