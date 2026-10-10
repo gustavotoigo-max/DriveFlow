@@ -1,9 +1,9 @@
 # Distribuições atuais
 
-- [Desktop Windows 1.2.0 — executável portátil](https://github.com/gustavotoigo-max/DriveFlow/releases/tag/v1.2.0).
+- [Desktop Windows 1.3.0 — executável portátil](https://github.com/gustavotoigo-max/DriveFlow/releases/tag/v1.3.0).
 - [Android Monitor 0.2.2 — APK compatível](https://github.com/gustavotoigo-max/DriveFlow/releases/tag/android-v0.2.2).
 
-O desktop 1.2.0 inclui Firebase, pareamento QR, atualização automática de pastas e atualizador pela interface. Baixe o executável portátil, feche
+O desktop 1.3.0 traz o login Entrar com Google e o novo visual. Inclui Firebase, pareamento QR, atualização automática de pastas e atualizador pela interface. Baixe o executável portátil, feche
 a versão anterior e abra o novo arquivo. Configurações e fila permanecem em
 `%LOCALAPPDATA%/DriveFlow`. As credenciais são configuradas separadamente e não
 acompanham os downloads. Veja [o guia de pareamento](docs/android-monitor.md).
