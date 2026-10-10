@@ -133,7 +133,7 @@ class FileBrowser(QWidget):
         address.addWidget(self.units_button)
         address.addWidget(button('↑', self.up))
         self.path = QLineEdit()
-        self.path.setPlaceholderText('Digite uma pasta ou navegue pelas unidades…')
+        self.path.setPlaceholderText('Caminho da pasta…')
         self.path.returnPressed.connect(lambda: self.navigate(self.path.text()))
         address.addWidget(self.path)
         layout.addLayout(address)
@@ -162,7 +162,7 @@ class FileBrowser(QWidget):
 
     def navigate(self, path):
         if path and not Path(path).is_dir():
-            self.path.setToolTip('Pasta indisponível ou inválida.')
+            self.path.setToolTip('Pasta não encontrada.')
             return
         self.tree.setRootIndex(self.model.index(path))
         self.path.setText(path)

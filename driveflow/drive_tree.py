@@ -117,7 +117,7 @@ class DriveTree(QTreeWidget):
             if generation != self.generation or self.nodes.get(ident) is not node:
                 return
             self.loading.discard(ident)
-            node.setToolTip(0, 'Falha ao carregar. Clique em Atualizar para tentar novamente.')
+            node.setToolTip(0, 'Falha ao carregar. Clique em Atualizar.')
             # Completion/manual refresh may have arrived during this failed request.
             # Consume it on errors too, rather than leaving the last upload stale.
             # Clear before retrying: another failure must not create a retry loop.

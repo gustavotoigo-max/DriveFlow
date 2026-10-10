@@ -76,12 +76,7 @@ class MainWindow(QMainWindow):
             side.addWidget(btn)
             self.nav.append(btn)
         side.addStretch()
-        side.addWidget(label('LOCAL → GOOGLE DRIVE', 'muted'))
-        note = label('Seus arquivos, diretamente\npara o destino escolhido.\nSem sincronização.', 'muted')
-        note.setWordWrap(True)
-        side.addWidget(note)
-        side.addSpacing(14)
-        side.addWidget(label(f'DESKTOP  /  v{__version__}', 'muted'))
+        side.addWidget(label(f'v{__version__}', 'muted'))
         outer.addWidget(sidebar)
         main = QVBoxLayout()
         main.setContentsMargins(22, 16, 22, 12)
@@ -138,7 +133,7 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(self.activity_page())
         main.addWidget(self.pages)
         outer.addLayout(main)
-        self.statusBar().showMessage('Fila salva automaticamente neste computador • Nenhum arquivo é compartilhado automaticamente')
+        self.statusBar().showMessage('Fila salva neste computador')
         self.page(0)
         self.apply_theme()
         self.timer = QTimer(self)
@@ -187,12 +182,9 @@ class MainWindow(QMainWindow):
         drive_box.addWidget(self.folders)
         self.choose = button('Usar esta pasta', self.choose_folder)
         drive_box.addWidget(self.choose)
-        self.destination_label = label('Escolha explicitamente uma pasta de destino.', 'muted')
+        self.destination_label = label('Escolha a pasta de destino.', 'muted')
         self.destination_label.setWordWrap(True)
         drive_box.addWidget(self.destination_label)
-        hint = label('Marque os arquivos e clique em Continuar na fila para iniciar o envio.', 'muted')
-        hint.setWordWrap(True)
-        drive_box.addWidget(hint)
         source_dest.addWidget(drive_panel)
         source_dest.setSizes([690, 380])
         splitter.addWidget(source_dest)
@@ -202,7 +194,7 @@ class MainWindow(QMainWindow):
         heading.addStretch()
         heading.addWidget(button('Pausar todos', self.manager.pause_all))
         self.continue_button = button('Continuar', self.resume_checked, True)
-        self.continue_button.setToolTip('Adiciona os arquivos locais selecionados e inicia os uploads marcados na fila.')
+        self.continue_button.setToolTip('Envia os arquivos marcados')
         heading.addWidget(self.continue_button)
         queue_box.addLayout(heading)
         self.queue = self.make_table(['ARQUIVO / DESTINO', 'PROGRESSO', 'STATUS', 'TEMPO / VELOCIDADE', 'CONTROLES'])
@@ -235,7 +227,6 @@ class MainWindow(QMainWindow):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.addWidget(label('Histórico de envios', 'title'))
-        layout.addWidget(label('Arquivos concluídos e verificados. Copiar um link não altera as permissões de acesso.', 'muted'))
         self.history = self.make_table(['ARQUIVO', 'TAMANHO', 'DESTINO', 'CONCLUÍDO EM'])
         layout.addWidget(self.history)
         actions = QHBoxLayout()
@@ -273,15 +264,15 @@ class MainWindow(QMainWindow):
         self.retries = QSpinBox()
         self.retries.setRange(0, 50)
         self.retries.setValue(self.db.setting('retries', 10))
-        form.addRow('Máximo de tentativas por interrupção', self.retries)
-        self.full_scope = QCheckBox('Acessar pastas existentes de todo o Drive no próximo login')
+        form.addRow('Tentativas por falha', self.retries)
+        self.full_scope = QCheckBox('Ver todas as pastas do Drive')
         self.full_scope.setChecked(self.db.setting('full_scope', True))
         form.addRow('Permissão de acesso', self.full_scope)
         from .firebase_monitor import default_config
         remote = self.db.setting('remote_monitoring')
         if not isinstance(remote, dict):
             remote = default_config()
-        self.remote_enabled = QCheckBox('Publicar estado dos uploads no Firebase')
+        self.remote_enabled = QCheckBox('Enviar status ao Firebase')
         self.remote_enabled.setChecked(remote.get('enabled') is True)
         form.addRow('Monitoramento remoto', self.remote_enabled)
         self.remote_id = QLineEdit(str(remote.get('computer_id', '')))
@@ -293,28 +284,22 @@ class MainWindow(QMainWindow):
             self.remote_interval.setValue(int(remote.get('update_interval_seconds', 5)))
         except (ValueError, TypeError):
             self.remote_interval.setValue(5)
-        form.addRow('ID exclusivo do computador', self.remote_id)
+        form.addRow('ID do computador', self.remote_id)
         form.addRow('Nome do computador', self.remote_name)
-        form.addRow('Intervalo de publicação (segundos)', self.remote_interval)
+        form.addRow('Intervalo (s)', self.remote_interval)
         credentials_row = QHBoxLayout()
         credentials_row.addWidget(self.remote_credentials)
         credentials_row.addWidget(button('Selecionar JSON…', self.select_firebase_credentials))
         form.addRow('Credencial Firebase', credentials_row)
-        form.addRow(label('Monitoramento: alterações entram em vigor ao reabrir o aplicativo.', 'muted'))
+        form.addRow(label('Vale ao reabrir o app.', 'muted'))
         mobile_row = QHBoxLayout()
-        mobile_row.addWidget(button('Conectar celular • QR code', self.pair_mobile))
+        mobile_row.addWidget(button('Conectar celular', self.pair_mobile))
         mobile_row.addWidget(button('Celulares vinculados', self.mobile_readers))
         form.addRow('Aplicativo Android', mobile_row)
         box.addLayout(form)
-        info = label('Por padrão, o Google permite acessar apenas arquivos e pastas criados ou autorizados para este aplicativo. '
-                     'Para navegar pelas pastas já existentes, ative a opção acima e reconecte a conta: o Google solicitará acesso amplo ao Drive. '
-                     'O aplicativo não torna arquivos públicos e não exclui arquivos do Drive.', 'muted')
-        info.setWordWrap(True)
-        box.addWidget(info)
         box.addWidget(button('Salvar configurações', self.save_settings, True))
-        box.addWidget(label('Pastas do Drive: atualização automática a cada 30 segundos. Arquivos locais acompanham as alterações do Windows.', 'muted'))
         from .updater import last_result
-        self.update_status = label(f'Versão instalada: {__version__}\n{last_result()}', 'muted')
+        self.update_status = label(f'Versão {__version__}\n{last_result()}', 'muted')
         self.update_status.setWordWrap(True)
         box.addWidget(self.update_status)
         self.update_button = button('Verificar atualizações', self.check_update)
@@ -324,18 +309,13 @@ class MainWindow(QMainWindow):
         box.addWidget(self.install_button)
         layout.addWidget(frame)
         frame, box = self.panel()
-        box.addWidget(label('Conexão e armazenamento local', 'section'))
-        if bundled_client():
-            text = ('Clique em Entrar com Google e escolha a conta no navegador. '
-                    'Para usar outro projeto Google Cloud, desconecte e importe um cliente OAuth do tipo Aplicativo para computador abaixo.')
-        else:
-            text = ('Para conectar: crie um projeto no Google Cloud, habilite a Google Drive API e baixe um cliente OAuth do tipo Aplicativo para computador. '
-                    'No modo de teste, adicione sua conta como usuário de teste. Depois clique em Conectar conta e selecione o JSON.')
-        note = label(text, 'muted')
-        note.setWordWrap(True)
-        box.addWidget(note)
-        box.addWidget(button('Entrar com cliente OAuth próprio (JSON)…', self.import_client))
-        location = label(f'Fila, eventos e tokens protegidos pelo Windows:\n{data_dir()}', 'muted')
+        box.addWidget(label('Conta e dados', 'section'))
+        if not bundled_client():
+            note = label('Conectar conta pede o JSON OAuth (Aplicativo para computador) do Google Cloud.', 'muted')
+            note.setWordWrap(True)
+            box.addWidget(note)
+        box.addWidget(button('Usar outro JSON OAuth…', self.import_client))
+        location = label(f'Dados protegidos pelo Windows:\n{data_dir()}', 'muted')
         location.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         box.addWidget(location)
         box.addWidget(button('Abrir pasta de dados', lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(data_dir())))))
@@ -351,7 +331,7 @@ class MainWindow(QMainWindow):
             self.folders.refresh_watched()
 
     def update_failed(self, error):
-        self.update_status.setText('Falha na atualização. Tente novamente; a versão atual foi preservada.')
+        self.update_status.setText('Falha na atualização. A versão atual foi mantida.')
         self.update_button.setEnabled(True)
         self.install_button.setEnabled(self.available_update is not None)
 
@@ -363,34 +343,34 @@ class MainWindow(QMainWindow):
         from .updater import find_update
         self.update_button.setEnabled(False)
         self.install_button.setEnabled(False)
-        self.update_status.setText('Consultando versões do desktop no GitHub…')
+        self.update_status.setText('Verificando…')
         def checked(release):
             self.available_update = release
             self.downloaded_update = None
             self.update_button.setEnabled(True)
             self.install_button.setText('Baixar atualização')
             self.install_button.setEnabled(release is not None and getattr(sys, 'frozen', False))
-            self.update_status.setText(f'Versão {release["version"]} disponível.' if release else 'Você já está na versão mais recente disponível.')
+            self.update_status.setText(f'Versão {release["version"]} disponível.' if release else 'Você está na versão mais recente.')
             if release and not getattr(sys, 'frozen', False):
-                self.update_status.setText('Atualização disponível. A instalação automática funciona no executável Windows; esta execução usa código-fonte.')
+                self.update_status.setText('Atualização disponível (instale pelo executável).')
         self.task(lambda: find_update(__version__), checked, on_error=self.update_failed, silent=silent)
 
     def download_update(self):
         from .updater import download_update, prepare_install
         if self.downloaded_update:
             if self.manager.running or self.busy:
-                self.notice('Pause os uploads e aguarde as operações em andamento antes de reiniciar para atualizar.')
+                self.notice('Pause os uploads antes de atualizar.')
                 return
-            if QMessageBox.question(self, 'Atualizar DriveFlow', 'Instalar a atualização e reiniciar? A fila e as credenciais serão preservadas; os uploads ficarão pausados.') != QMessageBox.StandardButton.Yes:
+            if QMessageBox.question(self, 'Atualizar DriveFlow', 'Instalar e reiniciar? A fila e a conta são mantidas.') != QMessageBox.StandardButton.Yes:
                 return
             if self.manager.running or self.busy:
-                self.notice('Aguarde as operações em andamento e tente novamente.')
+                self.notice('Aguarde e tente de novo.')
                 return
             try:
                 self.update_job = prepare_install(self.downloaded_update, self.available_update, Path(sys.executable))
             except Exception as exc:
                 self.db.event('', f'UPDATE_PREPARE_ERROR type={type(exc).__name__}')
-                self.notice('Não foi possível preparar a atualização. Confira a permissão de gravação na pasta do programa.')
+                self.notice('Não foi possível atualizar. Verifique a permissão da pasta do programa.')
                 return
             self.close()
             return
@@ -400,7 +380,7 @@ class MainWindow(QMainWindow):
         self.install_button.setEnabled(False)
         def downloaded(path):
             self.downloaded_update = path
-            self.update_status.setText('Download validado. Pause os uploads para instalar e reiniciar.')
+            self.update_status.setText('Download pronto. Pause os uploads para instalar.')
             self.install_button.setText('Instalar e reiniciar')
             self.install_button.setEnabled(True)
             self.update_button.setEnabled(True)
@@ -416,7 +396,7 @@ class MainWindow(QMainWindow):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.addWidget(label('Atividade', 'title'))
-        layout.addWidget(label('Últimos 500 eventos locais. Tokens, endereços de sessão e conteúdo de arquivos não são registrados.', 'muted'))
+        layout.addWidget(label('Últimos 500 eventos.', 'muted'))
         self.logs = QPlainTextEdit()
         self.logs.setReadOnly(True)
         layout.addWidget(self.logs)
@@ -427,7 +407,7 @@ class MainWindow(QMainWindow):
         from .mobile_pairing import PairingService
         config = self.db.setting('remote_monitoring', {})
         if not config.get('enabled'):
-            self.notice('Ative e salve o monitoramento remoto antes de conectar um celular.')
+            self.notice('Ative e salve o Firebase antes.')
             return None
         return PairingService(config, self.db.event)
 
@@ -435,7 +415,7 @@ class MainWindow(QMainWindow):
         try:
             import qrcode
         except ImportError:
-            self.notice('Instale as dependências de requirements-monitoring.txt para gerar o QR code.')
+            self.notice('Faltam as dependências do QR code (requirements-monitoring.txt).')
             return
         service = self.pairing_service()
         if service is None:
@@ -461,7 +441,7 @@ class MainWindow(QMainWindow):
             picture.setPixmap(QPixmap.fromImage(image).scaled(size * scale, size * scale,
                 Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.FastTransformation))
             box.addWidget(picture)
-            note = label('Código de uso único. Compartilhe somente com o celular que deseja autorizar.', 'muted')
+            note = label('Código de uso único.', 'muted')
             note.setWordWrap(True)
             box.addWidget(note)
             countdown = label('')
@@ -472,7 +452,7 @@ class MainWindow(QMainWindow):
                 countdown.setText(f'Expira em {remaining // 60:02d}:{remaining % 60:02d}')
                 if not remaining:
                     picture.clear()
-                    countdown.setText('Código expirado. Feche e gere outro.')
+                    countdown.setText('Código expirado. Gere outro.')
                     timer.stop()
             timer = QTimer(dialog)
             timer.timeout.connect(tick)
@@ -508,7 +488,7 @@ class MainWindow(QMainWindow):
                 uid = item.data(Qt.ItemDataRole.UserRole)
                 dialog.accept()
                 self.task(lambda: service.revoke(uid), lambda _: self.notice('Acesso do celular revogado.'))
-            box.addWidget(button('Revogar acesso selecionado', revoke))
+            box.addWidget(button('Revogar acesso', revoke))
             box.addWidget(button('Fechar', dialog.accept))
             dialog.exec()
         self.task(service.readers, show_readers)
@@ -541,7 +521,7 @@ class MainWindow(QMainWindow):
             remote_id = self.remote_id.text().strip()
             if self.remote_enabled.isChecked() and (not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', remote_id)
                     or not self.remote_name.text().strip() or not self.remote_credentials.text().strip()):
-                self.notice('Informe ID (letras, números, _ ou -), nome e caminho da credencial Firebase.')
+                self.notice('Preencha ID (letras, números, _ ou -), nome e credencial Firebase.')
                 return
             self.db.save_setting('remote_monitoring', dict(enabled=self.remote_enabled.isChecked(),
                 computer_id=remote_id, computer_name=self.remote_name.text().strip(),
@@ -551,7 +531,7 @@ class MainWindow(QMainWindow):
             try:
                 startup.set_enabled(requested_startup)
             except OSError:
-                self.notice('O Windows não permitiu alterar a inicialização automática. A configuração anterior foi preservada.')
+                self.notice('O Windows bloqueou a inicialização automática.')
                 self.start_windows.setChecked(self.db.setting('start_with_windows', True))
                 return
             self.db.save_setting('start_with_windows', requested_startup)
@@ -560,7 +540,7 @@ class MainWindow(QMainWindow):
                            ('retries', self.retries.value()), ('full_scope', self.full_scope.isChecked())]:
             self.db.save_setting(key, value)
         self.apply_theme()
-        self.statusBar().showMessage('Configurações salvas. Blocos e tentativas serão aplicados aos próximos workers.', 6000)
+        self.statusBar().showMessage('Configurações salvas.', 6000)
 
     def task(self, fn, callback, auth_task=False, on_error=None, silent=False):
         self.busy += 1
@@ -572,7 +552,7 @@ class MainWindow(QMainWindow):
             try:
                 result = fn()
             except Exception as exc:
-                safe = str(exc) if isinstance(exc, AuthError) or (isinstance(exc, ValueError) and 'http' not in str(exc).lower()) else 'Não foi possível completar a operação. Verifique conexão, credencial OAuth e permissões no Google Cloud.'
+                safe = str(exc) if isinstance(exc, AuthError) or (isinstance(exc, ValueError) and 'http' not in str(exc).lower()) else 'A operação falhou. Verifique a conexão e a conta.'
                 try:
                     self.db.event('', str(exc) if isinstance(exc, AuthError) else f'BACKGROUND_ERROR type={type(exc).__name__}')
                 except Exception:
@@ -604,7 +584,7 @@ class MainWindow(QMainWindow):
         if self.auth_busy:
             return
         if self.manager.running:
-            self.notice('Pause os uploads e aguarde o bloco atual terminar antes de trocar a conta.')
+            self.notice('Pause os uploads antes de trocar a conta.')
             return
         if self.auth.account_id:
             self.manager.pause_all()
@@ -617,7 +597,7 @@ class MainWindow(QMainWindow):
             self.folders.clear()
             self.folders.nodes.clear()
             self.drive_path.setText('Meu Drive')
-            self.destination_label.setText('Escolha uma pasta após conectar a conta.')
+            self.destination_label.setText('Conecte a conta.')
             self.account.setText('Desconectado')
             self.update_connection_dot()
             self.account.setToolTip('')
@@ -641,7 +621,7 @@ class MainWindow(QMainWindow):
         if self.auth_busy:
             return
         if self.auth.account_id:
-            self.notice('Desconecte a conta atual antes de entrar com outro cliente OAuth.')
+            self.notice('Desconecte a conta antes.')
             return
         path, _ = QFileDialog.getOpenFileName(self, 'Importar cliente OAuth Desktop', '', 'Credenciais Google (*.json)')
         if path:
@@ -653,7 +633,7 @@ class MainWindow(QMainWindow):
         self.folders.generation += 1
         self.folders.clear()
         self.folders.nodes.clear()
-        self.destination_label.setText('Escolha uma pasta de destino.')
+        self.destination_label.setText('Escolha a pasta de destino.')
         self.destination_label.setStyleSheet('')
         self.account.setText('Conectado')
         self.update_connection_dot()
@@ -705,10 +685,10 @@ class MainWindow(QMainWindow):
 
     def enqueue(self):
         if not self.destination or not self.auth.account_id:
-            self.notice('Conecte sua conta e use o botão Usar esta pasta para definir o destino.')
+            self.notice('Escolha a pasta de destino e clique em Usar esta pasta.')
             return
         if not self.browser.model.checked:
-            self.notice('Marque pelo menos um arquivo no explorador.')
+            self.notice('Marque ao menos um arquivo.')
             return
         errors = []
         added = []
@@ -771,7 +751,7 @@ class MainWindow(QMainWindow):
 
     def cancel_selected(self):
         item = self.selected()
-        if item and QMessageBox.question(self, 'Cancelar upload', 'Cancelar este envio? Nenhum arquivo no Drive será excluído.') == QMessageBox.StandardButton.Yes:
+        if item and QMessageBox.question(self, 'Cancelar upload', 'Cancelar este envio?') == QMessageBox.StandardButton.Yes:
             self.manager.pause(item['id'], cancel=True)
 
     def rename_selected(self):
@@ -779,18 +759,18 @@ class MainWindow(QMainWindow):
         if not item:
             return
         if item['remote_id'] or item['id'] in self.manager.running:
-            self.notice('Renomear está disponível antes de iniciar uma sessão de upload.')
+            self.notice('Só é possível renomear antes do envio começar.')
             return
-        name, ok = QInputDialog.getText(self, 'Nome no Google Drive', 'Novo nome (o arquivo local permanece igual):', text=item['name'])
+        name, ok = QInputDialog.getText(self, 'Nome no Google Drive', 'Novo nome no Drive:', text=item['name'])
         if ok and name.strip():
             self.db.update(item['id'], name=name.strip(), status='pausado', error='')
 
     def restart_selected(self):
         item = self.selected()
         if not item or item['status'] != 'sessão expirada':
-            self.notice('Este controle é destinado a sessões que o Google informou como expiradas.')
+            self.notice('Disponível só para sessões expiradas.')
             return
-        if QMessageBox.question(self, 'Reiniciar sessão expirada', 'O Google não permite mais retomar esta sessão. Reenviar este arquivo desde o início?') == QMessageBox.StandardButton.Yes:
+        if QMessageBox.question(self, 'Reiniciar sessão expirada', 'A sessão expirou. Reenviar do início?') == QMessageBox.StandardButton.Yes:
             self.db.event(item['id'], f'USER_RESTART_EXPIRED previous_offset={item["offset"]}')
             self.db.update(item['id'], session='', offset=0, status='pausado', error='')
             self.resume_selected()
@@ -801,7 +781,7 @@ class MainWindow(QMainWindow):
             self.remove_item(item['id'])
 
     def remove_item(self, ident):
-        if QMessageBox.question(self, 'Remover da fila', 'Remover este upload da lista? O envio será pausado automaticamente. Os arquivos local e do Google Drive serão preservados.') == QMessageBox.StandardButton.Yes:
+        if QMessageBox.question(self, 'Remover da fila', 'Remover da lista? Nenhum arquivo é apagado.') == QMessageBox.StandardButton.Yes:
             self.manager.remove(ident)
             self.refresh()
 
@@ -837,7 +817,7 @@ class MainWindow(QMainWindow):
         item = self.selected(self.history)
         if item:
             QApplication.clipboard().setText(f'https://drive.google.com/file/d/{item["remote_id"]}/view')
-            self.statusBar().showMessage('Link copiado. As permissões de acesso continuam iguais.', 5000)
+            self.statusBar().showMessage('Link copiado.', 5000)
 
     def open_link(self):
         item = self.selected(self.history)
@@ -850,7 +830,7 @@ class MainWindow(QMainWindow):
             QApplication.clipboard().setText(item['remote_id'])
 
     def clear_history(self):
-        if QMessageBox.question(self, 'Limpar histórico', 'Remover apenas os registros locais concluídos? Os arquivos no Google Drive serão preservados.') == QMessageBox.StandardButton.Yes:
+        if QMessageBox.question(self, 'Limpar histórico', 'Limpar o histórico? Os arquivos no Drive continuam.') == QMessageBox.StandardButton.Yes:
             for item in self.db.all():
                 if item['status'] == 'concluído':
                     self.db.remove(item['id'])
@@ -861,7 +841,7 @@ class MainWindow(QMainWindow):
             try:
                 Path(path).write_text(self.logs.toPlainText(), encoding='utf-8')
             except OSError:
-                self.notice('Não foi possível gravar o arquivo no local escolhido.')
+                self.notice('Não foi possível salvar o arquivo.')
 
     def fill_rows(self, table, rows, history=False):
         selected = self.selected(table)
@@ -973,13 +953,13 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         if self.manager.running:
-            if not self.closing and QMessageBox.question(self, 'Fechar DriveFlow', 'Há uploads ativos. Pausar e fechar após salvar o bloco atual? Você poderá continuar ao abrir novamente.') != QMessageBox.StandardButton.Yes:
+            if not self.closing and QMessageBox.question(self, 'Fechar DriveFlow', 'Há uploads ativos. Pausar e fechar? Eles continuam ao reabrir.') != QMessageBox.StandardButton.Yes:
                 event.ignore()
                 return
             self.closing = True
             self.manager.closed = True
             self.manager.pause_all()
-            self.statusBar().showMessage('Salvando o bloco atual antes de fechar… Aguarde o término ou timeout da requisição.')
+            self.statusBar().showMessage('Salvando antes de fechar…')
             event.ignore()
             return
         self.manager.closed = True
