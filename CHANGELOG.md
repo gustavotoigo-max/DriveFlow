@@ -1,5 +1,15 @@
 # Histórico de versões
 
+## Desktop v1.3.0 — 10/10/2026
+
+- Botão **Entrar com Google**: o cliente OAuth vai embutido na compilação e não é mais preciso selecionar o JSON a cada conexão. Importar outro JSON continua em Configurações.
+- Acesso a todas as pastas do Drive passa a ser o padrão no login.
+- Novo visual no padrão Nexotool: janela sem a barra do Windows, cabeçalho e rodapé azul-marinho, faixa azul-ciano, cartões e botões redesenhados.
+- Tema Automático, Claro ou Escuro. Temas escuros anteriores abrem no Escuro.
+- Símbolos do Google Drive e do Gmail, e ícones novos para Voltar, Atualizar e Nova pasta.
+- Cerca de 50 textos encurtados ou removidos.
+- Motor de upload, retomada, fila e atualizador permanecem inalterados.
+
 ## Desktop v1.2.0 — 07/10/2026
 
 - Consulta automática da pasta aberta e destino do Drive a cada 30 segundos, sem sobreposição de consultas.

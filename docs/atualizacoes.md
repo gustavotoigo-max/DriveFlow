@@ -1,4 +1,4 @@
-# Pastas e atualização do aplicativo — Desktop 1.2.0
+# Pastas e atualização do aplicativo — Desktop 1.2.0 ou superior
 
 ## Pastas
 

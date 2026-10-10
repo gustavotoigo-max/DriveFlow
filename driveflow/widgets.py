@@ -122,7 +122,7 @@ class FileBrowser(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         top = QHBoxLayout()
-        top.addWidget(label('01   Arquivos locais', 'section'))
+        top.addWidget(label('Arquivos locais', 'section'))
         top.addStretch()
         top.addWidget(button('Selecionar arquivos', self.pick))
         layout.addLayout(top)
@@ -133,7 +133,7 @@ class FileBrowser(QWidget):
         address.addWidget(self.units_button)
         address.addWidget(button('↑', self.up))
         self.path = QLineEdit()
-        self.path.setPlaceholderText('Digite uma pasta ou navegue pelas unidades…')
+        self.path.setPlaceholderText('Caminho da pasta…')
         self.path.returnPressed.connect(lambda: self.navigate(self.path.text()))
         address.addWidget(self.path)
         layout.addLayout(address)
@@ -158,11 +158,11 @@ class FileBrowser(QWidget):
         self.model.selection_changed.connect(self.update_summary)
 
     def update_summary(self):
-        self.summary.setText(f'{len(self.model.checked)} arquivo(s) selecionado(s) • seleção mantida entre unidades')
+        self.summary.setText(f'{len(self.model.checked)} arquivo(s) selecionado(s)')
 
     def navigate(self, path):
         if path and not Path(path).is_dir():
-            self.path.setToolTip('Pasta indisponível ou inválida.')
+            self.path.setToolTip('Pasta não encontrada.')
             return
         self.tree.setRootIndex(self.model.index(path))
         self.path.setText(path)
