@@ -70,6 +70,7 @@ def stylesheet(theme):
         QPushButton:hover {{ background: {c['alt']}; border-color: {c['hover_border']}; }}
         QPushButton:pressed {{ background: {c['border']}; }}
         QPushButton:disabled {{ color: {c['disabled']}; background: {c['disabled_fill']}; border-color: {c['border']}; }}
+        QPushButton#iconButton {{ padding: 0; font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets', 'Segoe UI'; font-size: 14px; }}
         QWidget#queueCell {{ background: transparent; }}
         QPushButton#rowControl {{ background: transparent; border: 1px solid transparent; padding: 4px; border-radius: 3px; }}
         QPushButton#rowControl:hover {{ background: {c['soft']}; border-color: {c['selection']}; }}
