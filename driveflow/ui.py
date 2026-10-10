@@ -211,14 +211,16 @@ class MainWindow(QMainWindow):
         drive_title.addWidget(drive_logo)
         drive_title.addWidget(label('Destino no Google Drive', 'section'))
         drive_title.addStretch()
-        # Segoe Fluent Icons no Windows; fora dele, caracteres comuns.
-        glyphs = ('\uE74A', '\uE72C', '\uE8F4') if sys.platform == 'win32' else ('↑', '↻', '+')
-        for glyph, tip, handler in zip(glyphs, ('Voltar', 'Atualizar', 'Nova pasta'), (self.drive_back, self.load_folders, self.new_folder)):
-            btn = button(glyph, handler)
+        self.icon_buttons = []
+        for asset, tip, handler in (('icons/voltar.svg', 'Voltar', self.drive_back), ('icons/atualizar.svg', 'Atualizar', self.load_folders),
+                                    ('icons/nova_pasta.svg', 'Nova pasta', self.new_folder)):
+            btn = button('', handler)
             btn.setObjectName('iconButton')
             btn.setToolTip(tip)
             btn.setFixedSize(32, 32)
+            btn.setIconSize(QSize(17, 17))
             drive_title.addWidget(btn)
+            self.icon_buttons.append((btn, asset))
         drive_box.addLayout(drive_title)
         self.drive_path = label('Meu Drive', 'muted')
         self.drive_path.setWordWrap(True)
@@ -552,6 +554,8 @@ class MainWindow(QMainWindow):
         accent = palette(theme)['accent']
         for btn, filename in zip(self.nav, self.nav_assets):
             btn.setIcon(themed_icon(filename, accent))
+        for btn, asset in self.icon_buttons:
+            btn.setIcon(themed_icon(asset, palette(theme)['muted']))
         self.action_icons = {name: themed_icon(name, accent) for name in ('play_24px.png', 'pausa_24px.png', 'stop.png', 'remover.png')}
 
     def update_connection_dot(self):
