@@ -11,6 +11,11 @@
 - Durante a compactação o upload fica limitado a 1 MB/s (ajustável em Configurações).
 - Opção **Compactação e Upload avançados**: compactação e upload se alternam no disco, sem rodar juntos.
 - Duplo clique numa pasta do Drive também a escolhe como destino.
+- Painéis do computador e do Drive divididos meio a meio; coluna do nome do tamanho do texto, barras maiores e centralizadas.
+- Barra concluída em azul esverdeado.
+- Novo tema **Grafite e verde** (temas Spotify, Verde escuro e Cinza grafite antigos abrem nele).
+- Atualizar no Drive recarrega todas as pastas abertas.
+- Árvores mantêm a hierarquia: abrir uma pasta não desloca a lista nem troca a raiz.
 
 ## Desktop v1.3.0 — 10/10/2026
 

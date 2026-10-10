@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QFrame, QHBox
 from .drive import Drive
 from .auth import AuthError, bundled_client
 from .storage import data_dir
-from .theme import THEMES, stylesheet, palette, LEGACY_DARK
+from .theme import THEMES, stylesheet, palette, theme_name
 from . import window_chrome
 from .widgets import FileBrowser, label, button, size_text, themed_icon, SmoothProgressBar
 from . import startup
@@ -242,7 +242,9 @@ class MainWindow(QMainWindow):
         self.destination_label.setWordWrap(True)
         drive_box.addWidget(self.destination_label)
         source_dest.addWidget(drive_panel)
-        source_dest.setSizes([690, 380])
+        source_dest.setStretchFactor(0, 1)
+        source_dest.setStretchFactor(1, 1)
+        source_dest.setSizes([10000, 10000])
         splitter.addWidget(source_dest)
         queue_panel, queue_box = self.panel()
         tools = QHBoxLayout()
@@ -264,6 +266,9 @@ class MainWindow(QMainWindow):
         for col, width in ((2, 115), (3, 175), (4, 196)):
             self.queue.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.Fixed)
             self.queue.setColumnWidth(col, width)
+        # Nome do tamanho do texto (fit_name_column); o espaço que sobra vai para as barras.
+        self.queue.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        self.queue.setWordWrap(False)
         self.queue.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.queue.customContextMenuRequested.connect(self.queue_menu)
         queue_box.addWidget(self.queue)
@@ -312,7 +317,7 @@ class MainWindow(QMainWindow):
         self.theme = QComboBox()
         self.theme.addItems(THEMES)
         saved = self.db.setting('theme', 'Automático')
-        self.theme.setCurrentText('Escuro' if saved in LEGACY_DARK else saved)
+        self.theme.setCurrentText(theme_name(saved))
         self.theme.currentTextChanged.connect(self.save_settings)
         form.addRow('Tema', self.theme)
         self.start_windows = QCheckBox('Abrir o DriveFlow ao entrar no Windows')
@@ -675,7 +680,8 @@ class MainWindow(QMainWindow):
         QApplication.instance().setStyleSheet(stylesheet(theme))
         accent = palette(theme)['accent']
         colors = palette(theme)
-        SmoothProgressBar.colors = dict(track=colors['disabled_fill'], start=colors['accent'], end=colors['cyan'], text=colors['text'])
+        SmoothProgressBar.colors = dict(track=colors['disabled_fill'], start=colors['accent'], end=colors['cyan'], text=colors['text'],
+                                        done_start=colors['done_start'], done_end=colors['done_end'])
         for bar in self.findChildren(SmoothProgressBar):
             bar.update()
         for btn, filename in zip(self.nav, self.nav_assets):
@@ -837,7 +843,7 @@ class MainWindow(QMainWindow):
         if not self.folders.nodes:
             self.folders.reset_tree()
         else:
-            self.folders.refresh_folder()
+            self.folders.refresh_all()
 
     def drive_back(self):
         node = self.folders.folder()
@@ -860,7 +866,7 @@ class MainWindow(QMainWindow):
         name, ok = dialogs.get_text(self, 'Nova pasta no Drive', 'Nome da pasta:')
         if ok and name.strip():
             parent = self.folder_stack[-1][0]
-            self.task(lambda: self.with_drive(lambda drive: drive.create_folder(parent, name.strip())), lambda _: self.load_folders())
+            self.task(lambda: self.with_drive(lambda drive: drive.create_folder(parent, name.strip())), lambda _: self.folders.refresh_folder(parent))
 
     def enqueue(self):
         if not self.destination or not self.auth.account_id:
@@ -1098,9 +1104,11 @@ class MainWindow(QMainWindow):
                     widget = QWidget()
                     widget.setObjectName('queueCell')
                     box = QVBoxLayout(widget)
-                    box.setContentsMargins(8, 6, 8, 6)
+                    box.setContentsMargins(16, 4, 16, 4)
                     box.setSpacing(4)
+                    box.addStretch()
                     widget.text = label('', 'muted')
+                    widget.text.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     # Barra de compactação acima da de upload (volumes do Compactar).
                     widget.packing = SmoothProgressBar()
                     widget.bar = SmoothProgressBar()
@@ -1127,6 +1135,14 @@ class MainWindow(QMainWindow):
             table.setCurrentCell(-1, -1)
         table.blockSignals(False)
 
+    def fit_name_column(self, rows):
+        metrics = self.queue.fontMetrics()
+        lines = ['ARQUIVO / DESTINO   '] + [line for x in rows for line in (x['name'], x['folder_name'].replace(' / ', '/'))]
+        # Texto + caixa de seleção + margens da célula.
+        width = min(560, max(metrics.horizontalAdvance(line) for line in lines) + 64)
+        if self.queue.columnWidth(0) != width:
+            self.queue.setColumnWidth(0, width)
+
     def refresh(self):
         self.manager.tick()
         self.poll_compression()
@@ -1141,6 +1157,7 @@ class MainWindow(QMainWindow):
         if self.compression is not None:
             pending = pending + [self.compression_row()]
         self.fill_rows(self.queue, pending)
+        self.fit_name_column(pending)
         self.fill_rows(self.history, list(reversed(done)), True)
         self.charts.sample(rows, self.manager.running, self.db.setting('theme', 'Automático'))
         newly_done = [x for x in done if x['id'] not in self.completed_ids]

@@ -184,7 +184,9 @@ def test_legacy_dark_theme_maps_to_dark(tmp_path, monkeypatch):
     monkeypatch.setattr(manager, 'tick', lambda: None)
     window = MainWindow(db, auth, manager)
     window.timer.stop()
-    assert window.theme.currentText() == 'Escuro'
+    assert window.theme.currentText() == 'Grafite e verde'
+    assert '#121212' in app.styleSheet() and palette('Grafite e verde')['accent'] == '#1DB954'
+    window.theme.setCurrentText('Escuro')
     assert '#0A1222' in app.styleSheet()
     manager.pool.shutdown()
     db.conn.close()
@@ -266,3 +268,25 @@ def test_start_label_compress_button_and_compressed_volumes(tmp_path, monkeypatc
     window.close()
     manager.pool.shutdown()
     db.conn.close()
+
+
+def test_drive_refresh_updates_every_open_folder_and_done_bar_color():
+    from driveflow.drive_tree import DriveTree
+    app = QApplication.instance() or QApplication([])
+    requests = []
+    tree = DriveTree(lambda fn, cb, **kw: requests.append(cb), None)
+    tree.reset_tree()
+    requests.pop()([{'id': 'a', 'name': 'A', 'mimeType': 'application/vnd.google-apps.folder'},
+                    {'id': 'b', 'name': 'B', 'mimeType': 'application/vnd.google-apps.folder'}])
+    for ident in ('a', 'b'):
+        tree.nodes[ident].setExpanded(True)
+        requests.pop()([])
+    tree.refresh_all()
+    assert len(requests) == 3  # Meu Drive, A e B.
+    bar = SmoothProgressBar()
+    bar.set_confirmed(bar.maximum(), 'x')
+    bar.resize(200, 20)
+    image = bar.grab().toImage()
+    done = image.pixelColor(20, 10)
+    assert done.green() > done.blue() * 0.6 and done.green() > done.red()  # Azul esverdeado.
+    bar.close()

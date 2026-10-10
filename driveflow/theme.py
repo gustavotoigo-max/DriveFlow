@@ -10,10 +10,26 @@ DARK = dict(LIGHT, bg='#0A1222', surface='#111B2E', alt='#16223A', border='#2432
             accent='#3B82F6', soft='#14294F', selection='#1D3B72', success='#22C55E', danger='#F87171', warning='#FBBF24',
             scroll='#4E6390')
 NAVY = dict(navy='#0B1733', navy2='#132447', navy3='#1E3260', on_navy='#F8FAFC', on_navy_muted='#94A3B8', cyan='#22D3EE')
+# Grafite e verde: cinzas neutros com verde de destaque, no estilo do Spotify.
+GREEN = dict(DARK, bg='#121212', surface='#181818', alt='#202020', border='#2A2A2A', strong='#3E3E3E', hover_border='#5E5E5E',
+             text='#FFFFFF', muted='#B3B3B3', subtle='#A0A0A0', disabled='#6A6A6A', disabled_fill='#2A2A2A',
+             accent='#1DB954', accent_hover='#1ED760', accent_pressed='#169C46', soft='#1D3326', selection='#24452F',
+             success='#1ED760', scroll='#5E5E5E',
+             navy='#000000', navy2='#1A1A1A', navy3='#2E2E2E', on_navy='#FFFFFF', on_navy_muted='#B3B3B3', cyan='#1ED760')
+# Barra concluída: azul esverdeado, levemente diferente da barra em andamento.
+DONE = dict(done_start='#0D9488', done_end='#2DD4BF')
 
-THEMES = ('Automático', 'Claro', 'Escuro')
-# Temas escuros das versões anteriores continuam escuros.
+GREEN_THEME = 'Grafite e verde'
+THEMES = ('Automático', 'Claro', 'Escuro', GREEN_THEME)
+# Temas escuros das versões anteriores continuam escuros; os verdes viram Grafite e verde.
 LEGACY_DARK = {'Azul profundo', 'Cinza grafite', 'Verde escuro', 'Spotify'}
+LEGACY_GREEN = {'Cinza grafite', 'Verde escuro', 'Spotify'}
+
+
+def theme_name(saved):
+    if saved in LEGACY_GREEN:
+        return GREEN_THEME
+    return 'Escuro' if saved in LEGACY_DARK else saved
 
 
 def windows_prefers_dark():
@@ -27,7 +43,7 @@ def windows_prefers_dark():
 
 
 def is_dark(theme):
-    if theme == 'Escuro' or theme in LEGACY_DARK:
+    if theme in ('Escuro', GREEN_THEME) or theme in LEGACY_DARK:
         return True
     if theme == 'Claro':
         return False
@@ -35,7 +51,9 @@ def is_dark(theme):
 
 
 def palette(theme):
-    return dict(DARK if is_dark(theme) else LIGHT, **NAVY)
+    if theme_name(theme) == GREEN_THEME:
+        return dict(GREEN, **DONE)
+    return dict(DARK if is_dark(theme) else LIGHT, **NAVY, **DONE)
 
 
 def stylesheet(theme):

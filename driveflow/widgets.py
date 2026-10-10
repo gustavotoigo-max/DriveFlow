@@ -49,8 +49,8 @@ class SmoothProgressBar(QProgressBar):
 
     Desenho do padrão Nexotool: trilho arredondado, preenchimento azul→ciano e o %
     centralizado, legível tanto sobre o preenchimento quanto sobre o trilho."""
-    colors = dict(track='#E2E8F0', start='#2563EB', end='#22D3EE', text='#0F172A')
-    HEIGHT = 16
+    colors = dict(track='#E2E8F0', start='#2563EB', end='#22D3EE', text='#0F172A', done_start='#0D9488', done_end='#2DD4BF')
+    HEIGHT = 20
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -101,14 +101,15 @@ class SmoothProgressBar(QProgressBar):
         fill = QRectF(rect.left(), rect.top(), rect.width() * fraction, rect.height())
         if fill.width() > 0:
             gradient = QLinearGradient(fill.topLeft(), fill.topRight())
-            gradient.setColorAt(0, QColor(c['start']))
-            gradient.setColorAt(1, QColor(c['end']))
+            done = self.value() >= self.maximum()
+            gradient.setColorAt(0, QColor(c['done_start' if done else 'start']))
+            gradient.setColorAt(1, QColor(c['done_end' if done else 'end']))
             painter.save()
             painter.setClipPath(track)
             painter.fillRect(fill, gradient)
             painter.restore()
         font = QFont(self.font())
-        font.setPixelSize(10)
+        font.setPixelSize(11)
         font.setWeight(QFont.Weight.DemiBold)
         painter.setFont(font)
         text = self.text()
@@ -119,6 +120,19 @@ class SmoothProgressBar(QProgressBar):
         painter.setPen(QColor('#FFFFFF'))
         painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
         painter.end()
+
+
+def keep_horizontal(view, scroll_to, *args):
+    """Abrir uma pasta não desloca a árvore para o lado: só a rolagem vertical acompanha."""
+    bar = view.horizontalScrollBar()
+    value = bar.value()
+    scroll_to(*args)
+    bar.setValue(value)
+
+
+class SteadyTree(QTreeView):
+    def scrollTo(self, index, hint=QTreeView.ScrollHint.EnsureVisible):
+        keep_horizontal(self, super().scrollTo, index, hint)
 
 
 class CheckedFiles(QFileSystemModel):
@@ -189,7 +203,7 @@ class FileBrowser(QWidget):
         address.addWidget(self.path)
         layout.addLayout(address)
         self.model = CheckedFiles()
-        self.tree = QTreeView()
+        self.tree = SteadyTree()
         self.tree.setModel(self.model)
         self.tree.setAlternatingRowColors(True)
         self.tree.setSortingEnabled(True)
@@ -198,7 +212,8 @@ class FileBrowser(QWidget):
         self.tree.setColumnWidth(1, 95)
         self.tree.hideColumn(2)
         self.tree.hideColumn(3)
-        self.tree.doubleClicked.connect(self.enter)
+        self.tree.header().setStretchLastSection(False)
+        self.tree.setIndentation(16)
         layout.addWidget(self.tree)
         bottom = QHBoxLayout()
         self.summary = label('Nenhum arquivo selecionado', 'muted')
@@ -217,10 +232,6 @@ class FileBrowser(QWidget):
             return
         self.tree.setRootIndex(self.model.index(path))
         self.path.setText(path)
-
-    def enter(self, index):
-        if self.model.isDir(index):
-            self.navigate(self.model.filePath(index))
 
     def up(self):
         path = Path(self.path.text())
