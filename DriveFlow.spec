@@ -14,7 +14,7 @@ a = Analysis(
     binaries=[],
     datas=[('driveflow/update_helper.ps1', 'driveflow'), ('upload.png', '.'), ('upload.ico', '.'), ('transferencias_24px.png', '.'),
            ('historico_24px.png', '.'), ('config_24px.png', '.'), ('lista_24px.png', '.'),
-           ('graficos.svg', '.'), ('check.svg', '.'), ('chevron.svg', '.'), ('play_24px.png', '.'),
+           ('graficos.svg', '.'), ('check.svg', '.'), ('chevron.svg', '.'), ('google_drive.svg', '.'), ('gmail.svg', '.'), ('play_24px.png', '.'),
            ('pausa_24px.png', '.'), ('stop.png', '.'), ('remover.png', '.')] + oauth_client,
     hiddenimports=[],
     hookspath=[],

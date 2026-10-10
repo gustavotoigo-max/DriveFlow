@@ -37,7 +37,7 @@ class UploadPlot(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setPen(QColor(border))
         p.setBrush(QColor(c['surface']))
-        p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 12, 12)
+        p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 4, 4)
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.setPen(QColor(c['text']))
         font = p.font()

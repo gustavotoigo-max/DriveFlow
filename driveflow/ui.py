@@ -4,7 +4,7 @@ import threading
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Qt, QTimer, Signal, QUrl, QSize
-from PySide6.QtGui import QDesktopServices, QColor, QIcon, QImage, QPixmap
+from PySide6.QtGui import QDesktopServices, QColor, QIcon, QImage, QPixmap, QPainter
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QFrame, QHBoxLayout, QVBoxLayout,
     QStackedWidget, QSplitter, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QProgressBar, QMessageBox, QFileDialog, QCheckBox, QComboBox, QSpinBox, QFormLayout,
@@ -55,8 +55,6 @@ class MainWindow(QMainWindow):
         brand_icon.setPixmap(app_icon.pixmap(20, 20))
         self.title_bar.layout_.addWidget(brand_icon)
         self.title_bar.layout_.addWidget(label('DriveFlow', 'appName'))
-        self.title_bar.layout_.addWidget(label('·', 'tagline'))
-        self.title_bar.layout_.addWidget(label('Uploads confiáveis', 'tagline'))
         self.title_bar.layout_.addStretch()
         self.connection_dot = label('')
         self.connection_dot.setFixedSize(7, 7)
@@ -67,6 +65,14 @@ class MainWindow(QMainWindow):
         self.update_connection_dot()
         self.connect_btn = button(self.login_text(), self.connect_account)
         self.connect_btn.setObjectName('navyButton')
+        # Ícone com folga à direita: QPushButton não tem espaçamento entre ícone e texto.
+        gmail = QPixmap(48, 24)
+        gmail.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(gmail)
+        QIcon(str(Path(__file__).resolve().parents[1] / 'gmail.svg')).paint(painter, 0, 0, 32, 24)
+        painter.end()
+        self.connect_btn.setIcon(QIcon(gmail))
+        self.connect_btn.setIconSize(QSize(24, 12))
         self.title_bar.layout_.addWidget(self.connect_btn, 0, Qt.AlignmentFlag.AlignVCenter)
         self.title_bar.finish()
         chrome = QWidget()
@@ -198,7 +204,14 @@ class MainWindow(QMainWindow):
         browser_box.addWidget(self.browser)
         source_dest.addWidget(browser_panel)
         drive_panel, drive_box = self.panel()
-        drive_box.addWidget(label('Destino no Google Drive', 'section'))
+        drive_title = QHBoxLayout()
+        drive_title.setSpacing(8)
+        drive_logo = label('')
+        drive_logo.setPixmap(QIcon(str(Path(__file__).resolve().parents[1] / 'google_drive.svg')).pixmap(QSize(20, 18)))
+        drive_title.addWidget(drive_logo)
+        drive_title.addWidget(label('Destino no Google Drive', 'section'))
+        drive_title.addStretch()
+        drive_box.addLayout(drive_title)
         self.drive_path = label('Meu Drive', 'muted')
         self.drive_path.setWordWrap(True)
         drive_box.addWidget(self.drive_path)
