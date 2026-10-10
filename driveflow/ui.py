@@ -1,14 +1,15 @@
 import os
 import sys
 import threading
+import time
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal, QUrl, QSize
+from PySide6.QtCore import QObject, Qt, QTimer, Signal, QUrl, QSize, QFileInfo
 from PySide6.QtGui import QDesktopServices, QColor, QIcon, QImage, QPixmap, QPainter
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QFrame, QHBoxLayout, QVBoxLayout,
     QStackedWidget, QSplitter, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QProgressBar, QMessageBox, QFileDialog, QCheckBox, QComboBox, QSpinBox, QFormLayout,
-    QListWidget, QListWidgetItem, QInputDialog, QPlainTextEdit, QDialog, QDialogButtonBox, QSizePolicy, QMenu, QLineEdit, QScrollArea)
+    QListWidget, QListWidgetItem, QInputDialog, QPlainTextEdit, QDialog, QDialogButtonBox, QSizePolicy, QMenu, QLineEdit, QScrollArea, QFileIconProvider)
 
 from .drive import Drive
 from .auth import AuthError, bundled_client
@@ -20,6 +21,8 @@ from . import startup
 from .version import __version__
 from .drive_tree import DriveTree
 from .charts import ChartsPage, duration
+from . import winrar
+from .compress_dialog import CompressDialog
 
 
 class Bridge(QObject):
@@ -40,6 +43,8 @@ class MainWindow(QMainWindow):
         self.update_job = None
         self.available_update = None
         self.downloaded_update = None
+        self.compression = None
+        self.winrar = winrar.find_winrar()
         self.bridge = Bridge()
         self.bridge.result.connect(self.task_done)
         self.setWindowTitle('DriveFlow')
@@ -152,6 +157,7 @@ class MainWindow(QMainWindow):
         self.show_status('Fila salva neste computador')
         self.page(0)
         self.apply_theme()
+        self.update_compress_button()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.timer.start(500)
@@ -237,11 +243,18 @@ class MainWindow(QMainWindow):
         source_dest.setSizes([690, 380])
         splitter.addWidget(source_dest)
         queue_panel, queue_box = self.panel()
+        tools = QHBoxLayout()
+        self.compress_button = button('Compactar', self.open_compress)
+        self.compress_button.setObjectName('compressButton')
+        self.compress_button.setIconSize(QSize(18, 18))
+        tools.addWidget(self.compress_button)
+        tools.addStretch()
+        queue_box.addLayout(tools)
         heading = QHBoxLayout()
         heading.addWidget(label('Fila de uploads', 'section'))
         heading.addStretch()
         heading.addWidget(button('Pausar todos', self.manager.pause_all))
-        self.continue_button = button('Continuar', self.resume_checked, True)
+        self.continue_button = button('Iniciar', self.resume_checked, True)
         self.continue_button.setToolTip('Envia os arquivos marcados')
         heading.addWidget(self.continue_button)
         queue_box.addLayout(heading)
@@ -376,7 +389,80 @@ class MainWindow(QMainWindow):
         scroll.setWidget(page)
         return scroll
 
+    def update_compress_button(self):
+        self.winrar = winrar.find_winrar()
+        if self.winrar:
+            self.compress_button.setIcon(QFileIconProvider().icon(QFileInfo(str(self.winrar))))
+            self.compress_button.setToolTip('Compactar uma pasta com o WinRAR e enviar os volumes')
+        else:
+            self.compress_button.setIcon(QIcon())
+            self.compress_button.setToolTip('WinRAR não encontrado neste computador')
+        self.compress_button.setEnabled(bool(self.winrar) and self.compression is None)
+
+    def open_compress(self):
+        if not self.winrar or self.compression is not None:
+            return
+        if not self.destination or not self.auth.account_id:
+            self.notice('Escolha a pasta de destino e clique em Usar esta pasta.')
+            return
+        current = self.browser.path.text()
+        destination, account = self.destination, self.auth.account_id
+
+        def start(source, name, options, split, password):
+            job = winrar.Compression(self.winrar, source, name, options['format'], options['method'], split, password)
+            job.destination, job.account = destination, account
+            self.db.save_setting('compress_options', options)
+            self.db.event('', f'COMPRESSION_STARTED format={options["format"]} split={split}')
+            return job
+        dialog = CompressDialog(self, current if current and Path(current).is_dir() else '',
+                                destination[1], self.db.setting('compress_options', {}), start)
+        if dialog.exec() and dialog.compression:
+            self.compression = dialog.compression
+            self.update_compress_button()
+            self.refresh()
+
+    def poll_compression(self):
+        job = self.compression
+        if job is None:
+            return
+        errors = []
+        for path in job.poll():
+            try:
+                ident = self.db.add(path, *job.destination, job.account, compressed=True)
+                self.db.event(ident, 'ADDED_TO_QUEUE_FROM_COMPRESSION')
+                self.manager.start(ident)
+            except (OSError, ValueError) as exc:
+                errors.append(f'{path.name}: {exc}')
+        if not job.running:
+            self.compression = None
+            self.update_compress_button()
+            self.db.event('', f'COMPRESSION_FINISHED code={job.result} cancelled={job.cancelled}')
+            if job.error and not job.cancelled:
+                errors.append(job.error)
+        # Avisos só depois de atualizar o estado: o diálogo deixa o timer rodar.
+        if errors:
+            self.notice('\n'.join(errors))
+
+    def cancel_compression(self, _=None):
+        if self.compression and QMessageBox.question(self, 'Cancelar compactação', 'Parar o WinRAR? Os volumes já prontos continuam na fila.') == QMessageBox.StandardButton.Yes:
+            self.compression.cancel()
+
+    def compression_row(self):
+        job = self.compression
+        path, fraction = job.current()
+        return dict(id='compress:' + job.name, name=path.name if path else job.archive.name, folder_name=job.destination[1],
+                    status='compactando', size=job._size(path) if path else 0, offset=0, speed=0,
+                    elapsed=time.monotonic() - job.started, enabled=1, error='', path=str(job.source),
+                    compressed=1, fraction=fraction)
+
+    def continue_text(self, rows):
+        # Continuar só quando há envio já começado e parado; senão Iniciar.
+        stopped = any(x['status'] not in ('concluído', 'cancelado') and x['id'] not in self.manager.running
+                      and (x['offset'] or x['remote_id'] or x['elapsed']) for x in rows)
+        return 'Continuar' if stopped else 'Iniciar'
+
     def refresh_watched_folders(self):
+        self.update_compress_button()
         if self.auth.account_id and not self.closing and not self.auth_busy:
             self.folders.refresh_watched()
 
@@ -552,6 +638,10 @@ class MainWindow(QMainWindow):
         theme = self.db.setting('theme', 'Automático')
         QApplication.instance().setStyleSheet(stylesheet(theme))
         accent = palette(theme)['accent']
+        colors = palette(theme)
+        SmoothProgressBar.colors = dict(track=colors['disabled_fill'], start=colors['accent'], end=colors['cyan'], text=colors['text'])
+        for bar in self.findChildren(SmoothProgressBar):
+            bar.update()
         for btn, filename in zip(self.nav, self.nav_assets):
             btn.setIcon(themed_icon(filename, accent))
         for btn, asset in self.icon_buttons:
@@ -903,6 +993,7 @@ class MainWindow(QMainWindow):
         selected_row = -1
         for row, item in enumerate(rows):
             ident = item['id']
+            virtual = ident.startswith('compress:')
             if ident == selected_id:
                 selected_row = row
             table.setRowHeight(row, 82 if not history else 62)
@@ -913,6 +1004,8 @@ class MainWindow(QMainWindow):
                 values[3] = f'{size_text(item["speed"])}/s\nDecorrido {duration(item["elapsed"])}\nRestante {remaining}'
                 if ident in self.manager.pending_removals:
                     values[2] = 'Removendo…'
+                if virtual:
+                    values[3] = f'Compactando\nDecorrido {duration(item["elapsed"])}'
             for col, value in enumerate(values):
                 cell = table.item(row, col)
                 if cell is None:
@@ -921,17 +1014,24 @@ class MainWindow(QMainWindow):
                 cell.setText(value)
                 cell.setData(Qt.ItemDataRole.UserRole, ident)
                 cell.setToolTip(item['error'] or item['path'])
-                if col == 0 and not history:
+                if col == 0 and not history and virtual:
+                    cell.setFlags(cell.flags() & ~Qt.ItemFlag.ItemIsUserCheckable)
+                    cell.setData(Qt.ItemDataRole.CheckStateRole, None)
+                elif col == 0 and not history:
                     cell.setFlags(cell.flags() | Qt.ItemFlag.ItemIsUserCheckable)
                     cell.setCheckState(Qt.CheckState.Checked if item['enabled'] else Qt.CheckState.Unchecked)
                 if col == 2 and not history:
                     colors = palette(self.db.setting('theme', 'Automático'))
-                    cell.setForeground(QColor(colors['accent'] if item['status'] in ('enviando', 'retomando') else colors['subtle']))
+                    cell.setForeground(QColor(colors['accent'] if item['status'] in ('enviando', 'retomando', 'compactando') else colors['subtle']))
             if not history:
-                for column, definitions in ((4, [('play_24px.png', 'Iniciar / continuar', self.play_item),
-                                                ('pausa_24px.png', 'Pausar', self.manager.pause),
-                                                ('stop.png', 'Parar', lambda key: self.manager.pause(key, cancel=True)),
-                                                ('remover.png', 'Remover da lista', self.remove_item)]),):
+                definitions = ([('play_24px.png', 'Iniciar / continuar', None), ('pausa_24px.png', 'Pausar', None),
+                                ('stop.png', 'Parar a compactação', self.cancel_compression),
+                                ('remover.png', 'Parar a compactação', self.cancel_compression)] if virtual else
+                               [('play_24px.png', 'Iniciar / continuar', self.play_item),
+                                ('pausa_24px.png', 'Pausar', self.manager.pause),
+                                ('stop.png', 'Parar', lambda key: self.manager.pause(key, cancel=True)),
+                                ('remover.png', 'Remover da lista', self.remove_item)])
+                for column in (4,):
                     controls = table.cellWidget(row, column)
                     if controls is None or controls.property('uploadId') != ident:
                         controls = QWidget()
@@ -945,7 +1045,7 @@ class MainWindow(QMainWindow):
                         for asset, tip, fn in definitions:
                             if asset == 'remover.png':
                                 layout.addSpacing(12)
-                            btn = button('', lambda checked=False, key=ident, action=fn: action(key))
+                            btn = button('', lambda checked=False, key=ident, action=fn: action and action(key))
                             btn.setObjectName('rowControl')
                             btn.setFixedSize(32, 32)
                             btn.setIconSize(QSize(20, 20))
@@ -953,24 +1053,35 @@ class MainWindow(QMainWindow):
                             layout.addWidget(btn)
                             controls.buttons.append((btn, asset))
                         table.setCellWidget(row, column, controls)
-                    for btn, asset in controls.buttons:
+                    for (btn, asset), (_, _, fn) in zip(controls.buttons, definitions):
                         btn.setIcon(self.action_icons[asset])
-                        btn.setEnabled(ident not in self.manager.pending_removals)
+                        btn.setEnabled(fn is not None and ident not in self.manager.pending_removals)
                 widget = table.cellWidget(row, 1)
                 if widget is None:
                     widget = QWidget()
                     widget.setObjectName('queueCell')
                     box = QVBoxLayout(widget)
-                    box.setContentsMargins(8, 7, 8, 7)
-                    widget.text = label('')
+                    box.setContentsMargins(8, 6, 8, 6)
+                    box.setSpacing(4)
+                    widget.text = label('', 'muted')
+                    # Barra de compactação acima da de upload (volumes do Compactar).
+                    widget.packing = SmoothProgressBar()
                     widget.bar = SmoothProgressBar()
-                    widget.bar.setTextVisible(False)
-                    widget.bar.setFixedHeight(6)
                     box.addWidget(widget.text)
+                    box.addWidget(widget.packing)
                     box.addWidget(widget.bar)
+                    box.addStretch()
                     table.setCellWidget(row, 1, widget)
                 pct = item['offset'] / item['size'] if item['size'] else 0
-                widget.text.setText(f'{pct:.1%}   •   {size_text(item["offset"])} / {size_text(item["size"])}')
+                packed = bool(item.get('compressed'))
+                widget.packing.setVisible(packed)
+                widget.packing.set_caption('Compactação')
+                widget.packing.set_confirmed(int(item.get('fraction', 1) * 100000), ident, animate=virtual)
+                widget.bar.set_caption('Upload' if packed else '')
+                if virtual:
+                    widget.text.setText(f'{size_text(item["size"])} gravados')
+                else:
+                    widget.text.setText(f'{size_text(item["offset"])} / {size_text(item["size"])}')
                 widget.bar.set_confirmed(int(pct * 100000), ident, animate=item['status'] in ('enviando', 'retomando'))
         if selected_row >= 0:
             table.selectRow(selected_row)
@@ -981,6 +1092,7 @@ class MainWindow(QMainWindow):
 
     def refresh(self):
         self.manager.tick()
+        self.poll_compression()
         rows = self.db.all()
         pending = [x for x in rows if x['status'] != 'concluído']
         done = [x for x in rows if x['status'] == 'concluído']
@@ -988,6 +1100,9 @@ class MainWindow(QMainWindow):
         self.stats[1].setText(size_text(sum(x['offset'] for x in rows)))
         self.stats[2].setText(size_text(sum(x['speed'] for x in rows)) + '/s')
         self.stats[3].setText(str(len(done)))
+        self.continue_button.setText(self.continue_text(pending))
+        if self.compression is not None:
+            pending = pending + [self.compression_row()]
         self.fill_rows(self.queue, pending)
         self.fill_rows(self.history, list(reversed(done)), True)
         self.charts.sample(rows, self.manager.running, self.db.setting('theme', 'Automático'))
@@ -1004,6 +1119,12 @@ class MainWindow(QMainWindow):
             self.close()
 
     def closeEvent(self, event):
+        if self.compression is not None:
+            if QMessageBox.question(self, 'Fechar DriveFlow', 'O WinRAR ainda está compactando. Parar e fechar?') != QMessageBox.StandardButton.Yes:
+                event.ignore()
+                return
+            self.compression.cancel()
+            self.compression = None
         if self.manager.running:
             if not self.closing and QMessageBox.question(self, 'Fechar DriveFlow', 'Há uploads ativos. Pausar e fechar? Eles continuam ao reabrir.') != QMessageBox.StandardButton.Yes:
                 event.ignore()

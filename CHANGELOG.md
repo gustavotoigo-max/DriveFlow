@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## Próxima versão (não publicada)
+
+- Botão **Compactar** acima da fila: compacta uma pasta com o WinRAR instalado (RAR ou ZIP, método, dicionário 4096 KB, volumes de 20, 25, 30 GB ou personalizado, senha). Fica apagado quando o WinRAR não é encontrado.
+- Cada volume entra na fila e começa a subir assim que o WinRAR passa para o próximo. A barra de compactação aparece acima da de upload.
+- Botão **Iniciar** quando nada foi interrompido; **Continuar** só quando há envio pausado ou parado.
+- Barras de progresso redesenhadas no padrão Nexotool, com o % no centro.
+
 ## Desktop v1.3.0 — 10/10/2026
 
 - Botão **Entrar com Google**: o cliente OAuth vai embutido na compilação e não é mais preciso selecionar o JSON a cada conexão. Importar outro JSON continua em Configurações.

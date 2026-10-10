@@ -1,8 +1,8 @@
 from pathlib import Path
 import os
 
-from PySide6.QtCore import Qt, Signal, QFileInfo, QSize, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor
+from PySide6.QtCore import Qt, Signal, QFileInfo, QSize, QPropertyAnimation, QEasingCurve, QRectF
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QLinearGradient, QPainterPath, QFont
 from PySide6.QtWidgets import (QFileSystemModel, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit,
                                QPushButton, QTreeView, QLabel, QFileDialog, QHeaderView, QFileIconProvider, QProgressBar)
 
@@ -45,11 +45,19 @@ def themed_icon(filename, color):
 
 
 class SmoothProgressBar(QProgressBar):
-    """Animate toward acknowledged bytes only, never predict network progress."""
+    """Animate toward acknowledged bytes only, never predict network progress.
+
+    Desenho do padrão Nexotool: trilho arredondado, preenchimento azul→ciano e o %
+    centralizado, legível tanto sobre o preenchimento quanto sobre o trilho."""
+    colors = dict(track='#E2E8F0', start='#2563EB', end='#22D3EE', text='#0F172A')
+    HEIGHT = 16
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setRange(0, 100000)
         self.setValue(0)
+        self.setFixedHeight(self.HEIGHT)
+        self.caption = ''
         self._identity = None
         self._confirmed = 0
         self.animation = QPropertyAnimation(self, b'value', self)
@@ -68,6 +76,49 @@ class SmoothProgressBar(QProgressBar):
             self.animation.setStartValue(self.value())
             self.animation.setEndValue(value)
             self.animation.start()
+
+
+    def set_caption(self, caption):
+        if caption != self.caption:
+            self.caption = caption
+            self.update()
+
+    def text(self):
+        fraction = self.value() / self.maximum() if self.maximum() else 0
+        percent = f'{fraction * 100:.0f}%' if fraction < .995 or self.value() == self.maximum() else '99%'
+        return f'{self.caption} {percent}'.strip()
+
+    def paintEvent(self, event):
+        c = self.colors
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = QRectF(self.rect())
+        radius = rect.height() / 2
+        track = QPainterPath()
+        track.addRoundedRect(rect, radius, radius)
+        painter.fillPath(track, QColor(c['track']))
+        fraction = (self.value() - self.minimum()) / max(1, self.maximum() - self.minimum())
+        fill = QRectF(rect.left(), rect.top(), rect.width() * fraction, rect.height())
+        if fill.width() > 0:
+            gradient = QLinearGradient(fill.topLeft(), fill.topRight())
+            gradient.setColorAt(0, QColor(c['start']))
+            gradient.setColorAt(1, QColor(c['end']))
+            painter.save()
+            painter.setClipPath(track)
+            painter.fillRect(fill, gradient)
+            painter.restore()
+        font = QFont(self.font())
+        font.setPixelSize(10)
+        font.setWeight(QFont.Weight.DemiBold)
+        painter.setFont(font)
+        text = self.text()
+        painter.setPen(QColor(c['text']))
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
+        # Parte do texto sobre o preenchimento em branco.
+        painter.setClipRect(fill)
+        painter.setPen(QColor('#FFFFFF'))
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
+        painter.end()
 
 
 class CheckedFiles(QFileSystemModel):

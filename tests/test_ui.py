@@ -188,3 +188,70 @@ def test_legacy_dark_theme_maps_to_dark(tmp_path, monkeypatch):
     assert '#0A1222' in app.styleSheet()
     manager.pool.shutdown()
     db.conn.close()
+
+
+def test_start_label_compress_button_and_compressed_volumes(tmp_path, monkeypatch):
+    import driveflow.ui as ui
+    from driveflow import winrar
+    monkeypatch.setenv('DRIVEFLOW_DATA_DIR', str(tmp_path / 'state'))
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(ui.winrar, 'find_winrar', lambda: None)
+    db, auth = Database(tmp_path / 'queue.sqlite3'), Auth()
+    auth.account_id = 'test-account'
+    manager = Manager(db, auth)
+    monkeypatch.setattr(manager, 'tick', lambda: None)
+    window = MainWindow(db, auth, manager)
+    window.timer.stop()
+    assert not window.compress_button.isEnabled()
+    window.refresh()
+    assert window.continue_button.text() == 'Iniciar'
+    first = tmp_path / 'first.zip'
+    first.write_bytes(b'one')
+    ident = db.add(first, 'folder', 'Meu Drive', auth.account_id)
+    window.refresh()
+    assert window.continue_button.text() == 'Iniciar'  # Nunca enviado.
+    db.update(ident, offset=1, status='interrompido')
+    window.refresh()
+    assert window.continue_button.text() == 'Continuar'
+    db.remove(ident)
+    exe = tmp_path / 'WinRAR.exe'
+    exe.write_bytes(b'')
+    monkeypatch.setattr(ui.winrar, 'find_winrar', lambda: exe)
+    window.update_compress_button()
+    assert window.compress_button.isEnabled()
+    source = tmp_path / 'Projeto'
+    source.mkdir()
+    (source / 'a.txt').write_text('a')
+
+    class Process:
+        code = None
+        def poll(self):
+            return self.code
+    process = Process()
+    job = winrar.Compression(exe, source, 'Projeto', 'ZIP', 'Normal', 1024 ** 2, '', popen=lambda *a, **k: process)
+    job.destination, job.account = ('folder', 'Meu Drive'), auth.account_id
+    window.compression = job
+    window.update_compress_button()
+    assert not window.compress_button.isEnabled()
+    (tmp_path / 'Projeto.z01').write_bytes(b'1' * 10)
+    window.refresh()
+    assert window.queue.rowCount() == 1 and window.queue.item(0, 2).text() == 'Compactando'
+    (tmp_path / 'Projeto.z02').write_bytes(b'2')
+    window.refresh()
+    rows = db.all()
+    assert [(r['name'], r['compressed'], r['status']) for r in rows] == [('Projeto.z01', 1, 'aguardando')]
+    assert window.queue.rowCount() == 2
+    cell = window.queue.cellWidget(0, 1)
+    assert not cell.packing.isHidden() and cell.packing.value() == cell.packing.maximum()
+    assert cell.bar.text() == 'Upload 0%'
+    process.code = 0
+    (tmp_path / 'Projeto.zip').write_bytes(b'3')
+    window.refresh()
+    assert [r['name'] for r in db.all()] == ['Projeto.z01', 'Projeto.z02', 'Projeto.zip']
+    assert window.compression is None and window.compress_button.isEnabled()
+    window.show()
+    app.processEvents()
+    window.grab().save(str(tmp_path / 'compress.png'))
+    window.close()
+    manager.pool.shutdown()
+    db.conn.close()
