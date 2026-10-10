@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, QRectF, QPointF
 from PySide6.QtGui import QColor, QPainter, QPen, QPainterPath, QLinearGradient
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QScrollArea
 
-from .theme import THEMES
+from .theme import palette
 from .widgets import label, size_text
 
 
@@ -20,7 +20,7 @@ class UploadPlot(QWidget):
         super().__init__()
         self.samples = deque(maxlen=241)
         self.item = {}
-        self.theme = 'Azul profundo'
+        self.theme = 'Automático'
         self.setMinimumSize(290, 260)
 
     def sample(self, stamp, item, theme):
@@ -31,13 +31,15 @@ class UploadPlot(QWidget):
     def paintEvent(self, event):
         if not self.item:
             return
-        bg, panel, hover, border, accent = THEMES[self.theme]
+        c = palette(self.theme)
+        border, accent, muted = c['border'], c['accent'], c['subtle']
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.fillRect(self.rect(), QColor(panel))
         p.setPen(QColor(border))
-        p.drawRect(self.rect().adjusted(0, 0, -1, -1))
-        p.setPen(QColor('#e4eaf2'))
+        p.setBrush(QColor(c['surface']))
+        p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 12, 12)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QColor(c['text']))
         font = p.font()
         font.setBold(True)
         p.setFont(font)
@@ -46,7 +48,7 @@ class UploadPlot(QWidget):
         p.setFont(font)
         p.setPen(QColor(accent))
         p.drawText(16, 49, f'{size_text(self.item["speed"])}/s   ·   {self.item["status"].capitalize()}')
-        p.setPen(QColor('#9baabd'))
+        p.setPen(QColor(muted))
         eta = duration((self.item['size'] - self.item['offset']) / self.item['speed']) if self.item['speed'] > 0 else '—'
         p.drawText(16, 71, f'Decorrido {duration(self.item["elapsed"])}   ·   Restante {eta}')
         plot = QRectF(62, 103, self.width() - 82, self.height() - 147)
@@ -60,7 +62,7 @@ class UploadPlot(QWidget):
             y = plot.bottom() - i * plot.height() / 4
             p.setPen(QPen(QColor(border), 1, Qt.PenStyle.DotLine))
             p.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y))
-            p.setPen(QColor('#9baabd'))
+            p.setPen(QColor(muted))
             p.drawText(QRectF(2, y - 8, 53, 18), Qt.AlignmentFlag.AlignRight, f'{ceiling * i / 4:.2g}')
         for i, seconds in enumerate((120, 90, 60, 30, 0)):
             x = plot.left() + i * plot.width() / 4

@@ -13,7 +13,8 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QFrame, QHBox
 from .drive import Drive
 from .auth import AuthError, bundled_client
 from .storage import data_dir
-from .theme import THEMES, stylesheet
+from .theme import THEMES, stylesheet, palette, LEGACY_DARK
+from . import window_chrome
 from .widgets import FileBrowser, label, button, size_text, themed_icon, SmoothProgressBar
 from . import startup
 from .version import __version__
@@ -41,11 +42,43 @@ class MainWindow(QMainWindow):
         self.downloaded_update = None
         self.bridge = Bridge()
         self.bridge.result.connect(self.task_done)
-        self.setWindowTitle(f'DriveFlow v{__version__} • Gerenciador de uploads')
+        self.setWindowTitle('DriveFlow')
         app_icon = QIcon(str(Path(__file__).resolve().parents[1] / 'upload.ico'))
         self.setWindowIcon(app_icon)
+        window_chrome.make_frameless(self)
+        self.native_styled = False
         self.resize(1390, 920)
         self.setMinimumSize(1080, 750)
+        self.title_bar = window_chrome.TitleBar(self)
+        brand_icon = label('')
+        brand_icon.setFixedSize(20, 20)
+        brand_icon.setPixmap(app_icon.pixmap(20, 20))
+        self.title_bar.layout_.addWidget(brand_icon)
+        self.title_bar.layout_.addWidget(label('DriveFlow', 'appName'))
+        self.title_bar.layout_.addWidget(label('·', 'tagline'))
+        self.title_bar.layout_.addWidget(label('Uploads confiáveis', 'tagline'))
+        self.title_bar.layout_.addStretch()
+        self.connection_dot = label('')
+        self.connection_dot.setFixedSize(7, 7)
+        self.title_bar.layout_.addWidget(self.connection_dot, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.account = label('Desconectado', 'account')
+        self.account.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        self.title_bar.layout_.addWidget(self.account, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.update_connection_dot()
+        self.connect_btn = button(self.login_text(), self.connect_account)
+        self.connect_btn.setObjectName('navyButton')
+        self.title_bar.layout_.addWidget(self.connect_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.title_bar.finish()
+        chrome = QWidget()
+        chrome_box = QVBoxLayout(chrome)
+        chrome_box.setContentsMargins(0, 0, 0, 0)
+        chrome_box.setSpacing(0)
+        chrome_box.addWidget(self.title_bar)
+        accent_line = QFrame()
+        accent_line.setObjectName('accentLine')
+        accent_line.setFixedHeight(2)
+        chrome_box.addWidget(accent_line)
+        self.setMenuWidget(chrome)
         root = QWidget()
         self.setCentralWidget(root)
         outer = QHBoxLayout(root)
@@ -53,33 +86,23 @@ class MainWindow(QMainWindow):
         outer.setSpacing(0)
         sidebar = QFrame()
         sidebar.setObjectName('sidebar')
-        sidebar.setFixedWidth(198)
+        sidebar.setFixedWidth(208)
         side = QVBoxLayout(sidebar)
-        side.setContentsMargins(20, 27, 16, 22)
-        branding = QHBoxLayout()
-        branding.setSpacing(8)
-        self.brand_icon = label('')
-        self.brand_icon.setFixedSize(28, 28)
-        self.brand_icon.setPixmap(app_icon.pixmap(28, 28))
-        branding.addWidget(self.brand_icon)
-        branding.addWidget(label('DriveFlow', 'brand'))
-        side.addLayout(branding)
-        side.addWidget(label('UPLOADS CONFIÁVEIS', 'muted'))
-        side.addSpacing(36)
+        side.setContentsMargins(12, 18, 12, 18)
+        side.setSpacing(2)
         self.nav = []
         self.nav_assets = ['transferencias_24px.png', 'graficos.svg', 'historico_24px.png', 'config_24px.png', 'lista_24px.png']
         for i, title in enumerate(['Transferências', 'Gráficos', 'Histórico', 'Configurações', 'Atividade']):
             btn = button(title, lambda checked=False, n=i: self.page(n))
             btn.setObjectName('nav')
             btn.setCheckable(True)
-            btn.setIconSize(QSize(24, 24))
+            btn.setIconSize(QSize(20, 20))
             side.addWidget(btn)
             self.nav.append(btn)
         side.addStretch()
-        side.addWidget(label(f'v{__version__}', 'muted'))
         outer.addWidget(sidebar)
         main = QVBoxLayout()
-        main.setContentsMargins(22, 16, 22, 12)
+        main.setContentsMargins(24, 20, 24, 16)
         header = QHBoxLayout()
         header.setSpacing(16)
         self.stats_panel = QFrame()
@@ -97,33 +120,14 @@ class MainWindow(QMainWindow):
                 stats_layout.addWidget(divider)
             metric = QVBoxLayout()
             metric.setSpacing(0)
-            metric.addWidget(label(title, 'muted'))
+            metric.addWidget(label(title, 'statLabel'))
             value = label('—', 'stat')
             self.stats.append(value)
             metric.addWidget(value)
             stats_layout.addLayout(metric, 1)
         header.addWidget(self.stats_panel, 1)
-        self.account = label('Desconectado', 'muted')
-        self.account.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
-        self.account.setWordWrap(False)
-        self.account.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        header.setSpacing(14)
-        header.addWidget(self.account, 0, Qt.AlignmentFlag.AlignVCenter)
-        self.connection_dot = label('')
-        self.connection_dot.setFixedSize(7, 7)
-        # Segoe UI's visible glyphs sit slightly below the line box center.
-        # Keep the dot on their optical center, not above the text.
-        dot_holder = QWidget()
-        dot_holder.setFixedSize(7, 10)
-        dot_layout = QVBoxLayout(dot_holder)
-        dot_layout.setContentsMargins(0, 3, 0, 0)
-        dot_layout.addWidget(self.connection_dot)
-        header.addWidget(dot_holder, 0, Qt.AlignmentFlag.AlignVCenter)
-        self.update_connection_dot()
-        self.connect_btn = button(self.login_text(), self.connect_account)
-        header.addWidget(self.connect_btn, 0, Qt.AlignmentFlag.AlignVCenter)
         main.addLayout(header)
-        main.addSpacing(6)
+        main.addSpacing(10)
         self.pages = QStackedWidget()
         self.pages.addWidget(self.transfer_page())
         self.charts = ChartsPage()
@@ -133,7 +137,13 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(self.activity_page())
         main.addWidget(self.pages)
         outer.addLayout(main)
-        self.statusBar().showMessage('Fila salva neste computador')
+        self.statusBar().setSizeGripEnabled(False)
+        self.status_text = label('')
+        self.status_text.setContentsMargins(10, 0, 0, 0)
+        self.statusBar().addWidget(self.status_text, 1)
+        self.statusBar().addPermanentWidget(label(f'v{__version__}'))
+        self.status_token = 0
+        self.show_status('Fila salva neste computador')
         self.page(0)
         self.apply_theme()
         self.timer = QTimer(self)
@@ -152,6 +162,24 @@ class MainWindow(QMainWindow):
         if auth.path.exists():
             self.task(auth.restore, lambda _: self.connected(), auth_task=True)
 
+    def show_status(self, text, timeout=0):
+        """Rodapé: mensagens temporárias voltam ao texto padrão."""
+        self.status_token += 1
+        token = self.status_token
+        self.status_text.setText(text)
+        if timeout:
+            QTimer.singleShot(timeout, lambda: token == self.status_token and self.show_status('Fila salva neste computador'))
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self.native_styled:
+            self.native_styled = True
+            window_chrome.apply_native_style(self)
+
+    def nativeEvent(self, event_type, message):
+        handled = window_chrome.native_event(self, event_type, message)
+        return handled if handled is not None else super().nativeEvent(event_type, message)
+
     def panel(self):
         frame = QFrame()
         frame.setObjectName('panel')
@@ -166,9 +194,11 @@ class MainWindow(QMainWindow):
         splitter = QSplitter(Qt.Orientation.Vertical)
         source_dest = QSplitter(Qt.Orientation.Horizontal)
         self.browser = FileBrowser()
-        source_dest.addWidget(self.browser)
+        browser_panel, browser_box = self.panel()
+        browser_box.addWidget(self.browser)
+        source_dest.addWidget(browser_panel)
         drive_panel, drive_box = self.panel()
-        drive_box.addWidget(label('02   Destino no Google Drive', 'section'))
+        drive_box.addWidget(label('Destino no Google Drive', 'section'))
         self.drive_path = label('Meu Drive', 'muted')
         self.drive_path.setWordWrap(True)
         drive_box.addWidget(self.drive_path)
@@ -190,7 +220,7 @@ class MainWindow(QMainWindow):
         splitter.addWidget(source_dest)
         queue_panel, queue_box = self.panel()
         heading = QHBoxLayout()
-        heading.addWidget(label('03   Fila de uploads', 'section'))
+        heading.addWidget(label('Fila de uploads', 'section'))
         heading.addStretch()
         heading.addWidget(button('Pausar todos', self.manager.pause_all))
         self.continue_button = button('Continuar', self.resume_checked, True)
@@ -244,10 +274,12 @@ class MainWindow(QMainWindow):
         layout.addWidget(label('Configurações', 'title'))
         frame, box = self.panel()
         form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         form.setSpacing(18)
         self.theme = QComboBox()
         self.theme.addItems(THEMES)
-        self.theme.setCurrentText(self.db.setting('theme', 'Azul profundo'))
+        saved = self.db.setting('theme', 'Automático')
+        self.theme.setCurrentText('Escuro' if saved in LEGACY_DARK else saved)
         self.theme.currentTextChanged.connect(self.save_settings)
         form.addRow('Tema', self.theme)
         self.start_windows = QCheckBox('Abrir o DriveFlow ao entrar no Windows')
@@ -499,16 +531,16 @@ class MainWindow(QMainWindow):
             btn.setChecked(i == index)
 
     def apply_theme(self):
-        theme = self.db.setting('theme', 'Azul profundo')
+        theme = self.db.setting('theme', 'Automático')
         QApplication.instance().setStyleSheet(stylesheet(theme))
-        accent = THEMES.get(theme, THEMES['Azul profundo'])[4]
+        accent = palette(theme)['accent']
         for btn, filename in zip(self.nav, self.nav_assets):
             btn.setIcon(themed_icon(filename, accent))
         self.action_icons = {name: themed_icon(name, accent) for name in ('play_24px.png', 'pausa_24px.png', 'stop.png', 'remover.png')}
 
     def update_connection_dot(self):
         connected = bool(self.auth.account_id)
-        self.connection_dot.setStyleSheet('background: ' + ('#36df80' if connected else '#df6666') + '; border-radius: 3px;')
+        self.connection_dot.setStyleSheet('background: ' + ('#22C55E' if connected else '#df6666') + '; border-radius: 3px;')
         self.connection_dot.setToolTip('Conta autenticada' if connected else 'Conta desconectada')
 
     def save_settings(self, *_):
@@ -540,7 +572,7 @@ class MainWindow(QMainWindow):
                            ('retries', self.retries.value()), ('full_scope', self.full_scope.isChecked())]:
             self.db.save_setting(key, value)
         self.apply_theme()
-        self.statusBar().showMessage('Configurações salvas.', 6000)
+        self.show_status('Configurações salvas.', 6000)
 
     def task(self, fn, callback, auth_task=False, on_error=None, silent=False):
         self.busy += 1
@@ -811,13 +843,13 @@ class MainWindow(QMainWindow):
     def show_details(self):
         item = self.selected()
         if item and item['error']:
-            self.statusBar().showMessage(item['error'], 6000)
+            self.show_status(item['error'], 6000)
 
     def copy_link(self):
         item = self.selected(self.history)
         if item:
             QApplication.clipboard().setText(f'https://drive.google.com/file/d/{item["remote_id"]}/view')
-            self.statusBar().showMessage('Link copiado.', 5000)
+            self.show_status('Link copiado.', 5000)
 
     def open_link(self):
         item = self.selected(self.history)
@@ -873,8 +905,8 @@ class MainWindow(QMainWindow):
                     cell.setFlags(cell.flags() | Qt.ItemFlag.ItemIsUserCheckable)
                     cell.setCheckState(Qt.CheckState.Checked if item['enabled'] else Qt.CheckState.Unchecked)
                 if col == 2 and not history:
-                    accent = THEMES.get(self.db.setting('theme', 'Azul profundo'), THEMES['Azul profundo'])[4]
-                    cell.setForeground(QColor(accent if item['status'] in ('enviando', 'retomando') else '#a9b8c9'))
+                    colors = palette(self.db.setting('theme', 'Automático'))
+                    cell.setForeground(QColor(colors['accent'] if item['status'] in ('enviando', 'retomando') else colors['subtle']))
             if not history:
                 for column, definitions in ((4, [('play_24px.png', 'Iniciar / continuar', self.play_item),
                                                 ('pausa_24px.png', 'Pausar', self.manager.pause),
@@ -938,7 +970,7 @@ class MainWindow(QMainWindow):
         self.stats[3].setText(str(len(done)))
         self.fill_rows(self.queue, pending)
         self.fill_rows(self.history, list(reversed(done)), True)
-        self.charts.sample(rows, self.manager.running, self.db.setting('theme', 'Azul profundo'))
+        self.charts.sample(rows, self.manager.running, self.db.setting('theme', 'Automático'))
         newly_done = [x for x in done if x['id'] not in self.completed_ids]
         self.completed_ids = {x['id'] for x in done}
         if self.auth.account_id:
@@ -959,7 +991,7 @@ class MainWindow(QMainWindow):
             self.closing = True
             self.manager.closed = True
             self.manager.pause_all()
-            self.statusBar().showMessage('Salvando antes de fechar…')
+            self.show_status('Salvando antes de fechar…')
             event.ignore()
             return
         self.manager.closed = True

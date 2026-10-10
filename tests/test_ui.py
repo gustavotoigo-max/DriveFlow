@@ -52,10 +52,10 @@ def test_ui_selection_persistence_settings_and_render(tmp_path, monkeypatch):
     assert window.selected()['id'] == ident
     window.pause_selected()
     assert db.get(ident)['status'] == 'pausado'
-    window.theme.setCurrentText('Verde escuro')
+    window.theme.setCurrentText('Escuro')
     window.save_settings()
-    assert db.setting('theme') == 'Verde escuro'
-    window.theme.setCurrentText('Azul profundo')
+    assert db.setting('theme') == 'Escuro'
+    window.theme.setCurrentText('Claro')
     db.remove(ident)
     model.clear()
     window.refresh()
@@ -130,13 +130,13 @@ def test_continue_adds_local_files_and_only_starts_checked_queue(tmp_path, monke
     window.continue_button.click()
     assert db.get(old_id)['status'] == 'aguardando'
     assert db.get(new_item['id'])['status'] == 'pausado'
-    window.theme.setCurrentText('Spotify')
-    assert '#1DB954' in app.styleSheet()
+    window.theme.setCurrentText('Escuro')
+    assert '#0A1222' in app.styleSheet()
     window.show()
     app.processEvents()
     assert window.stats_panel.height() == 62
-    assert window.stats_panel.geometry().right() < window.account.geometry().left()
-    screenshot = Path(__file__).resolve().parents[1] / 'docs' / 'interface-spotify.png'
+    assert window.account.parent() is window.title_bar
+    screenshot = Path(__file__).resolve().parents[1] / 'docs' / 'interface-escuro.png'
     window.grab().save(str(screenshot))
     window.close()
     app.processEvents()
@@ -168,5 +168,23 @@ def test_login_uses_bundled_client_without_asking_for_json(tmp_path, monkeypatch
     monkeypatch.setattr(ui, 'bundled_client', lambda: None)
     window.connect_account()
     assert calls == ['dialog']
+    manager.pool.shutdown()
+    db.conn.close()
+
+
+def test_legacy_dark_theme_maps_to_dark(tmp_path, monkeypatch):
+    from driveflow.theme import palette, is_dark
+    assert is_dark('Spotify') and is_dark('Escuro') and not is_dark('Claro')
+    assert palette('Azul profundo')['bg'] == palette('Escuro')['bg']
+    monkeypatch.setenv('DRIVEFLOW_DATA_DIR', str(tmp_path / 'state'))
+    app = QApplication.instance() or QApplication([])
+    db, auth = Database(tmp_path / 'queue.sqlite3'), Auth()
+    db.save_setting('theme', 'Verde escuro')
+    manager = Manager(db, auth)
+    monkeypatch.setattr(manager, 'tick', lambda: None)
+    window = MainWindow(db, auth, manager)
+    window.timer.stop()
+    assert window.theme.currentText() == 'Escuro'
+    assert '#0A1222' in app.styleSheet()
     manager.pool.shutdown()
     db.conn.close()
