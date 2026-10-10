@@ -20,19 +20,19 @@ class FakeProcess:
 
 
 def job(tmp_path, fmt='ZIP', split=10):
-    source = tmp_path / 'Cliente X'
-    source.mkdir(exist_ok=True)
+    source = tmp_path / 'origem' / 'Cliente X'
+    source.mkdir(parents=True, exist_ok=True)
     (source / 'a.bin').write_bytes(b'x' * 100)
-    return winrar.Compression('C:/WinRAR/WinRAR.exe', source, 'Cliente X', fmt, 'Normal', split, 's3nha', popen=FakeProcess)
+    return winrar.Compression('C:/WinRAR/WinRAR.exe', source, tmp_path, 'Cliente X', fmt, 'Normal', split, 's3nha', popen=FakeProcess)
 
 
 def test_command_uses_winrar_switches():
-    args = winrar.command('WinRAR.exe', 'C:/p', 'C:/p.zip', 'ZIP', 'Melhor', 20 * 1024 ** 3, 'abc')
+    args = winrar.command('WinRAR.exe', 'C:/p', 'C:/p.zip', 'ZIP', 'Best', 20 * 1024 ** 3, 'abc')
     assert args[:2] == ['WinRAR.exe', 'a']
     assert {'-ibck', '-y', '-r', '-ep1', '-m5', '-afzip', '-pabc', f'-v{20 * 1024 ** 3}b'} <= set(args)
     assert '-md4m' not in args  # Dicionário só existe no RAR.
     assert args[-3:] == ['--', 'C:/p.zip', 'C:/p']
-    rar = winrar.command('WinRAR.exe', 'C:/p', 'C:/p.rar', 'RAR', 'Armazenar', 1024 ** 2, '')
+    rar = winrar.command('WinRAR.exe', 'C:/p', 'C:/p.rar', 'RAR', 'Store', 1024 ** 2, '')
     assert {'-afrar', '-md4m', '-m0'} <= set(rar) and not any(x.startswith('-p') for x in rar)
 
 
@@ -75,7 +75,11 @@ def test_rar_single_volume_and_failures(tmp_path):
     (other / 'Cliente X.z01').write_bytes(b'1')
     failed.process.code = 11
     assert failed.poll() == [] and 'senha' in failed.error
-    cancelled = job(tmp_path / 'other' / 'Cliente X', 'ZIP')
+    cancelled = job(tmp_path / 'third', 'ZIP')
+    cancelled.suspend()
+    assert cancelled.suspended
+    cancelled.resume()
+    assert not cancelled.suspended
     cancelled.cancel()
     assert cancelled.process.terminated and cancelled.poll() == [] and cancelled.error == 'Compactação cancelada.'
 
@@ -89,3 +93,33 @@ def test_find_winrar_in_program_files(tmp_path, monkeypatch):
     exe.write_bytes(b'')
     monkeypatch.setenv('ProgramFiles', str(tmp_path))
     assert winrar.find_winrar() == exe
+
+
+def test_output_never_inside_the_source(tmp_path):
+    source = tmp_path / 'dados'
+    (source / 'sub').mkdir(parents=True)
+    for output in (source, source / 'sub'):
+        with pytest.raises(ValueError, match='fora da pasta de origem'):
+            winrar.check_output(source, output)
+    winrar.check_output(source, tmp_path)
+    assert winrar.same_disk(source, tmp_path)
+
+
+def test_throttled_body_respects_rate(monkeypatch):
+    import threading
+    from driveflow.upload import Throttled
+    clock = [0.0]
+    monkeypatch.setattr('driveflow.upload.time.monotonic', lambda: clock[0])
+    waits = []
+
+    class Stop(threading.Event):
+        def wait(self, seconds=None):
+            waits.append(seconds)
+            clock[0] += seconds
+    body = Throttled(b'x' * (256 * 1024), lambda: 128 * 1024, Stop())
+    assert len(body) == 256 * 1024 and body
+    data = b''
+    while block := body.read(8192 * 100):
+        data += block
+    assert data == b'x' * (256 * 1024)
+    assert clock[0] == pytest.approx(2.0)  # 256 KiB a 128 KiB/s.

@@ -6,6 +6,11 @@
 - Cada volume entra na fila e começa a subir assim que o WinRAR passa para o próximo. A barra de compactação aparece acima da de upload.
 - Botão **Iniciar** quando nada foi interrompido; **Continuar** só quando há envio pausado ou parado.
 - Barras de progresso redesenhadas no padrão Nexotool, com o % no centro.
+- Janelas internas (avisos, perguntas, Compactar, celular) sem a barra do Windows, no padrão da janela principal, com os botões centralizados.
+- Os volumes são salvos numa pasta escolhida, nunca na pasta de origem; um aviso aparece quando a origem e os volumes estão no mesmo disco.
+- Durante a compactação o upload fica limitado a 1 MB/s (ajustável em Configurações).
+- Opção **Compactação e Upload avançados**: compactação e upload se alternam no disco, sem rodar juntos.
+- Duplo clique numa pasta do Drive também a escolhe como destino.
 
 ## Desktop v1.3.0 — 10/10/2026
 

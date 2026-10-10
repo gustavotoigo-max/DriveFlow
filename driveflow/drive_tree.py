@@ -20,6 +20,7 @@ class DestinationDelegate(QStyledItemDelegate):
 
 class DriveTree(QTreeWidget):
     folderSelected = Signal(object)
+    folderActivated = Signal()
 
     def __init__(self, task, with_drive):
         super().__init__()
@@ -38,6 +39,9 @@ class DriveTree(QTreeWidget):
         self.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.itemExpanded.connect(self.load)
         self.currentItemChanged.connect(lambda *_: self.folderSelected.emit(self.path()))
+        # Duplo clique numa pasta também a escolhe como destino.
+        self.itemDoubleClicked.connect(lambda node, _: node.data(0, Qt.ItemDataRole.UserRole)['mimeType'] == FOLDER
+                                       and self.folderActivated.emit())
 
     def reset_tree(self):
         self.generation += 1

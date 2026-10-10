@@ -8,8 +8,8 @@ from PySide6.QtCore import QObject, Qt, QTimer, Signal, QUrl, QSize, QFileInfo
 from PySide6.QtGui import QDesktopServices, QColor, QIcon, QImage, QPixmap, QPainter
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QFrame, QHBoxLayout, QVBoxLayout,
     QStackedWidget, QSplitter, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
-    QProgressBar, QMessageBox, QFileDialog, QCheckBox, QComboBox, QSpinBox, QFormLayout,
-    QListWidget, QListWidgetItem, QInputDialog, QPlainTextEdit, QDialog, QDialogButtonBox, QSizePolicy, QMenu, QLineEdit, QScrollArea, QFileIconProvider)
+    QFileDialog, QCheckBox, QComboBox, QSpinBox, QDoubleSpinBox, QFormLayout,
+    QListWidget, QListWidgetItem, QPlainTextEdit, QSizePolicy, QMenu, QLineEdit, QScrollArea, QFileIconProvider)
 
 from .drive import Drive
 from .auth import AuthError, bundled_client
@@ -22,6 +22,7 @@ from .version import __version__
 from .drive_tree import DriveTree
 from .charts import ChartsPage, duration
 from . import winrar
+from . import dialogs
 from .compress_dialog import CompressDialog
 
 
@@ -233,6 +234,7 @@ class MainWindow(QMainWindow):
         drive_box.addWidget(self.drive_path)
         self.folders = DriveTree(self.task, self.with_drive)
         self.folders.folderSelected.connect(self.folder_selected)
+        self.folders.folderActivated.connect(self.choose_folder)
         drive_box.addWidget(self.folders)
         self.choose = button('Usar esta pasta', self.choose_folder)
         drive_box.addWidget(self.choose)
@@ -328,6 +330,26 @@ class MainWindow(QMainWindow):
         self.retries.setRange(0, 50)
         self.retries.setValue(self.db.setting('retries', 10))
         form.addRow('Tentativas por falha', self.retries)
+        self.compress_limit = QDoubleSpinBox()
+        self.compress_limit.setRange(0.1, 1000)
+        self.compress_limit.setDecimals(1)
+        self.compress_limit.setSuffix(' MB/s')
+        self.compress_limit.setValue(self.db.setting('compress_upload_limit', 1.0))
+        form.addRow('Upload durante a compactação', self.compress_limit)
+        advanced_row = QHBoxLayout()
+        self.advanced = QCheckBox('Compactação e Upload avançados')
+        self.advanced.setChecked(self.db.setting('advanced_pipeline', False))
+        tip = ('Para HD: compactação e upload nunca rodam juntos. Quando um volume fica pronto, '
+               'o WinRAR pausa, o volume sobe em velocidade total e a compactação continua. '
+               'O disco lê ou grava uma coisa por vez, com menos movimento da cabeça de leitura.')
+        self.advanced.setToolTip(tip)
+        info = label('ⓘ', 'infoTip')
+        info.setToolTip(tip)
+        info.setCursor(Qt.CursorShape.WhatsThisCursor)
+        advanced_row.addWidget(self.advanced)
+        advanced_row.addWidget(info)
+        advanced_row.addStretch()
+        form.addRow('Disco', advanced_row)
         self.full_scope = QCheckBox('Ver todas as pastas do Drive')
         self.full_scope.setChecked(self.db.setting('full_scope', True))
         form.addRow('Permissão de acesso', self.full_scope)
@@ -408,14 +430,16 @@ class MainWindow(QMainWindow):
         current = self.browser.path.text()
         destination, account = self.destination, self.auth.account_id
 
-        def start(source, name, options, split, password):
-            job = winrar.Compression(self.winrar, source, name, options['format'], options['method'], split, password)
+        def start(source, output, name, options, split, password):
+            job = winrar.Compression(self.winrar, source, output, name, options['format'], options['method'], split, password)
             job.destination, job.account = destination, account
             self.db.save_setting('compress_options', options)
             self.db.event('', f'COMPRESSION_STARTED format={options["format"]} split={split}')
             return job
+        options = self.db.setting('compress_options', {})
+        output = options.get('output', '')
         dialog = CompressDialog(self, current if current and Path(current).is_dir() else '',
-                                destination[1], self.db.setting('compress_options', {}), start)
+                                output if output and Path(output).is_dir() else '', options, start)
         if dialog.exec() and dialog.compression:
             self.compression = dialog.compression
             self.update_compress_button()
@@ -433,8 +457,10 @@ class MainWindow(QMainWindow):
                 self.manager.start(ident)
             except (OSError, ValueError) as exc:
                 errors.append(f'{path.name}: {exc}')
+        self.pace_compression(job)
         if not job.running:
             self.compression = None
+            self.manager.rate_limit = 0
             self.update_compress_button()
             self.db.event('', f'COMPRESSION_FINISHED code={job.result} cancelled={job.cancelled}')
             if job.error and not job.cancelled:
@@ -443,15 +469,28 @@ class MainWindow(QMainWindow):
         if errors:
             self.notice('\n'.join(errors))
 
+    def pace_compression(self, job):
+        """Avançado: WinRAR e upload se alternam no disco. Normal: upload limitado."""
+        uploading = bool(self.manager.running) or any(x['status'] == 'aguardando' and x['enabled'] for x in self.db.all())
+        if self.db.setting('advanced_pipeline', False):
+            self.manager.rate_limit = 0
+            if uploading and job.running:
+                job.suspend()
+            else:
+                job.resume()
+        else:
+            job.resume()
+            self.manager.rate_limit = int(self.db.setting('compress_upload_limit', 1.0) * 1024 * 1024) if job.running else 0
+
     def cancel_compression(self, _=None):
-        if self.compression and QMessageBox.question(self, 'Cancelar compactação', 'Parar o WinRAR? Os volumes já prontos continuam na fila.') == QMessageBox.StandardButton.Yes:
+        if self.compression and dialogs.ask(self, 'Cancelar compactação', 'Parar o WinRAR? Os volumes já prontos continuam na fila.'):
             self.compression.cancel()
 
     def compression_row(self):
         job = self.compression
         path, fraction = job.current()
         return dict(id='compress:' + job.name, name=path.name if path else job.archive.name, folder_name=job.destination[1],
-                    status='compactando', size=job._size(path) if path else 0, offset=0, speed=0,
+                    status='aguardando upload' if job.suspended else 'compactando', size=job._size(path) if path else 0, offset=0, speed=0,
                     elapsed=time.monotonic() - job.started, enabled=1, error='', path=str(job.source),
                     compressed=1, fraction=fraction)
 
@@ -497,7 +536,7 @@ class MainWindow(QMainWindow):
             if self.manager.running or self.busy:
                 self.notice('Pause os uploads antes de atualizar.')
                 return
-            if QMessageBox.question(self, 'Atualizar DriveFlow', 'Instalar e reiniciar? A fila e a conta são mantidas.') != QMessageBox.StandardButton.Yes:
+            if not dialogs.ask(self, 'Atualizar DriveFlow', 'Instalar e reiniciar? A fila e a conta são mantidas.'):
                 return
             if self.manager.running or self.busy:
                 self.notice('Aguarde e tente de novo.')
@@ -567,9 +606,8 @@ class MainWindow(QMainWindow):
             for y, row in enumerate(matrix):
                 for x, black in enumerate(row):
                     image.setPixelColor(x, y, QColor('black' if black else 'white'))
-            dialog = QDialog(self)
-            dialog.setWindowTitle('Conectar celular • DriveFlow')
-            box = QVBoxLayout(dialog)
+            dialog = dialogs.Dialog(self, 'Conectar celular')
+            box = dialog.body
             box.addWidget(label('Escaneie com o DriveFlow Monitor', 'title'))
             picture = label('')
             picture.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -594,7 +632,7 @@ class MainWindow(QMainWindow):
             timer.timeout.connect(tick)
             timer.start(1000)
             tick()
-            box.addWidget(button('Fechar', dialog.accept))
+            dialog.add_buttons(button('Fechar', dialog.accept, True))
             dialog.exec()
             self.task(lambda: service.cancel_code(digest), lambda _: None)
         self.task(service.create_code, show_code)
@@ -604,10 +642,9 @@ class MainWindow(QMainWindow):
         if service is None:
             return
         def show_readers(rows):
-            dialog = QDialog(self)
-            dialog.setWindowTitle('Celulares vinculados')
-            dialog.resize(460, 300)
-            box = QVBoxLayout(dialog)
+            dialog = dialogs.Dialog(self, 'Celulares vinculados')
+            dialog.resize(460, 340)
+            box = dialog.body
             box.addWidget(label('Acesso de leitura a esta máquina', 'section'))
             listing = QListWidget()
             for uid, name in rows:
@@ -624,8 +661,7 @@ class MainWindow(QMainWindow):
                 uid = item.data(Qt.ItemDataRole.UserRole)
                 dialog.accept()
                 self.task(lambda: service.revoke(uid), lambda _: self.notice('Acesso do celular revogado.'))
-            box.addWidget(button('Revogar acesso', revoke))
-            box.addWidget(button('Fechar', dialog.accept))
+            dialog.add_buttons(button('Revogar acesso', revoke), button('Fechar', dialog.accept, True))
             dialog.exec()
         self.task(service.readers, show_readers)
 
@@ -679,7 +715,8 @@ class MainWindow(QMainWindow):
             self.db.save_setting('start_with_windows', requested_startup)
         for key, value in [('theme', self.theme.currentText()),
                            ('concurrency', self.concurrency.value()), ('chunk_mib', int(self.chunks.currentText())),
-                           ('retries', self.retries.value()), ('full_scope', self.full_scope.isChecked())]:
+                           ('retries', self.retries.value()), ('full_scope', self.full_scope.isChecked()),
+                           ('compress_upload_limit', self.compress_limit.value()), ('advanced_pipeline', self.advanced.isChecked())]:
             self.db.save_setting(key, value)
         self.apply_theme()
         self.show_status('Configurações salvas.', 6000)
@@ -720,7 +757,7 @@ class MainWindow(QMainWindow):
             callback(result)
 
     def notice(self, text):
-        QMessageBox.information(self, 'DriveFlow', text)
+        dialogs.message(self, text)
 
     def connect_account(self):
         if self.auth_busy:
@@ -820,7 +857,7 @@ class MainWindow(QMainWindow):
         if not self.auth.account_id:
             self.notice('Conecte sua conta Google primeiro.')
             return
-        name, ok = QInputDialog.getText(self, 'Nova pasta no Drive', 'Nome da pasta:')
+        name, ok = dialogs.get_text(self, 'Nova pasta no Drive', 'Nome da pasta:')
         if ok and name.strip():
             parent = self.folder_stack[-1][0]
             self.task(lambda: self.with_drive(lambda drive: drive.create_folder(parent, name.strip())), lambda _: self.load_folders())
@@ -893,7 +930,7 @@ class MainWindow(QMainWindow):
 
     def cancel_selected(self):
         item = self.selected()
-        if item and QMessageBox.question(self, 'Cancelar upload', 'Cancelar este envio?') == QMessageBox.StandardButton.Yes:
+        if item and dialogs.ask(self, 'Cancelar upload', 'Cancelar este envio?'):
             self.manager.pause(item['id'], cancel=True)
 
     def rename_selected(self):
@@ -903,7 +940,7 @@ class MainWindow(QMainWindow):
         if item['remote_id'] or item['id'] in self.manager.running:
             self.notice('Só é possível renomear antes do envio começar.')
             return
-        name, ok = QInputDialog.getText(self, 'Nome no Google Drive', 'Novo nome no Drive:', text=item['name'])
+        name, ok = dialogs.get_text(self, 'Nome no Google Drive', 'Novo nome no Drive:', text=item['name'])
         if ok and name.strip():
             self.db.update(item['id'], name=name.strip(), status='pausado', error='')
 
@@ -912,7 +949,7 @@ class MainWindow(QMainWindow):
         if not item or item['status'] != 'sessão expirada':
             self.notice('Disponível só para sessões expiradas.')
             return
-        if QMessageBox.question(self, 'Reiniciar sessão expirada', 'A sessão expirou. Reenviar do início?') == QMessageBox.StandardButton.Yes:
+        if dialogs.ask(self, 'Reiniciar sessão expirada', 'A sessão expirou. Reenviar do início?'):
             self.db.event(item['id'], f'USER_RESTART_EXPIRED previous_offset={item["offset"]}')
             self.db.update(item['id'], session='', offset=0, status='pausado', error='')
             self.resume_selected()
@@ -923,7 +960,7 @@ class MainWindow(QMainWindow):
             self.remove_item(item['id'])
 
     def remove_item(self, ident):
-        if QMessageBox.question(self, 'Remover da fila', 'Remover da lista? Nenhum arquivo é apagado.') == QMessageBox.StandardButton.Yes:
+        if dialogs.ask(self, 'Remover da fila', 'Remover da lista? Nenhum arquivo é apagado.'):
             self.manager.remove(ident)
             self.refresh()
 
@@ -972,7 +1009,7 @@ class MainWindow(QMainWindow):
             QApplication.clipboard().setText(item['remote_id'])
 
     def clear_history(self):
-        if QMessageBox.question(self, 'Limpar histórico', 'Limpar o histórico? Os arquivos no Drive continuam.') == QMessageBox.StandardButton.Yes:
+        if dialogs.ask(self, 'Limpar histórico', 'Limpar o histórico? Os arquivos no Drive continuam.'):
             for item in self.db.all():
                 if item['status'] == 'concluído':
                     self.db.remove(item['id'])
@@ -1005,7 +1042,7 @@ class MainWindow(QMainWindow):
                 if ident in self.manager.pending_removals:
                     values[2] = 'Removendo…'
                 if virtual:
-                    values[3] = f'Compactando\nDecorrido {duration(item["elapsed"])}'
+                    values[3] = f'{"Em pausa" if self.compression.suspended else "Compactando"}\nDecorrido {duration(item["elapsed"])}'
             for col, value in enumerate(values):
                 cell = table.item(row, col)
                 if cell is None:
@@ -1120,13 +1157,13 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         if self.compression is not None:
-            if QMessageBox.question(self, 'Fechar DriveFlow', 'O WinRAR ainda está compactando. Parar e fechar?') != QMessageBox.StandardButton.Yes:
+            if not dialogs.ask(self, 'Fechar DriveFlow', 'O WinRAR ainda está compactando. Parar e fechar?'):
                 event.ignore()
                 return
             self.compression.cancel()
             self.compression = None
         if self.manager.running:
-            if not self.closing and QMessageBox.question(self, 'Fechar DriveFlow', 'Há uploads ativos. Pausar e fechar? Eles continuam ao reabrir.') != QMessageBox.StandardButton.Yes:
+            if not self.closing and not dialogs.ask(self, 'Fechar DriveFlow', 'Há uploads ativos. Pausar e fechar? Eles continuam ao reabrir.'):
                 event.ignore()
                 return
             self.closing = True

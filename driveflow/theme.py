@@ -48,6 +48,7 @@ def stylesheet(theme):
         QLabel {{ background: transparent; }}
         QLabel#title {{ font-size: 22px; font-weight: 600; }}
         QLabel#muted {{ color: {c['muted']}; }}
+        QLabel#infoTip {{ color: {c['accent']}; font-size: 15px; font-weight: 600; }}
         QLabel#section {{ font-size: 14px; font-weight: 600; }}
         QLabel#stat {{ font-size: 20px; font-weight: 600; color: {c['accent']}; }}
         QLabel#statLabel {{ color: {c['subtle']}; font-size: 11px; font-weight: 600; }}
@@ -80,10 +81,10 @@ def stylesheet(theme):
         QPushButton#nav {{ text-align: left; padding: 9px 10px; border: none; border-radius: 3px; background: transparent; color: {c['muted']}; }}
         QPushButton#nav:hover {{ background: {c['alt']}; }}
         QPushButton#nav:checked {{ background: {c['soft']}; color: {c['accent']}; }}
-        QLineEdit, QSpinBox, QComboBox {{ background: {c['surface']}; padding: 7px 9px; border: 1px solid {c['strong']}; border-radius: 3px; }}
-        QLineEdit:hover, QSpinBox:hover, QComboBox:hover {{ border-color: {c['hover_border']}; }}
-        QLineEdit:focus, QSpinBox:focus, QComboBox:focus {{ border-color: {c['accent']}; }}
-        QSpinBox::up-button, QSpinBox::down-button {{ width: 0; border: none; }}
+        QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {{ background: {c['surface']}; padding: 7px 9px; border: 1px solid {c['strong']}; border-radius: 3px; }}
+        QLineEdit:hover, QSpinBox:hover, QDoubleSpinBox:hover, QComboBox:hover {{ border-color: {c['hover_border']}; }}
+        QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {{ border-color: {c['accent']}; }}
+        QSpinBox::up-button, QSpinBox::down-button, QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{ width: 0; border: none; }}
         QComboBox::drop-down {{ border: none; width: 30px; }}
         QComboBox::down-arrow {{ image: url("{chevron}"); width: 12px; height: 12px; }}
         QComboBox QAbstractItemView {{ background: {c['surface']}; border: 1px solid {c['border']}; selection-background-color: {c['soft']}; selection-color: {c['text']}; }}

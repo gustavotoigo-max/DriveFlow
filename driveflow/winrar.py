@@ -7,9 +7,8 @@ import threading
 import time
 from pathlib import Path
 
-# Mesmos níveis da janela "Nome e parâmetros do arquivo" do WinRAR (-m0 a -m5).
-METHODS = ('Armazenar', 'Mais rápido', 'Rápido', 'Normal', 'Bom', 'Melhor')
-DICTIONARY = '4096 KB'
+# Mesmos nomes da janela "Archive name and parameters" do WinRAR (-m0 a -m5).
+METHODS = ('Store', 'Fastest', 'Fast', 'Normal', 'Good', 'Best')
 SPLITS = ('20 GB', '25 GB', '30 GB')
 # Códigos de saída do WinRAR; 0 e 1 (aviso) mantêm o arquivo válido.
 EXIT_CODES = {2: 'erro fatal', 3: 'falha de verificação (CRC)', 4: 'arquivo bloqueado', 5: 'erro de gravação',
@@ -98,6 +97,22 @@ def volumes(folder, base, fmt):
     return sorted(found, key=lambda path: volume_order(path.name, fmt))
 
 
+def same_disk(first, second):
+    try:
+        return os.stat(first).st_dev == os.stat(second).st_dev
+    except OSError:
+        return False
+
+
+def check_output(source, output):
+    """A pasta dos volumes nunca é a pasta de origem nem fica dentro dela."""
+    source, output = Path(source).resolve(), Path(output).resolve()
+    if not output.is_dir():
+        raise ValueError('Escolha a pasta onde salvar os volumes.')
+    if output == source or source in output.parents:
+        raise ValueError('Salve os volumes fora da pasta de origem.')
+
+
 def existing_output(folder, base):
     return [path.name for fmt in ('ZIP', 'RAR') for path in volumes(folder, base, fmt)]
 
@@ -131,12 +146,13 @@ class Compression:
     """Acompanha um WinRAR em execução. poll() devolve os volumes que ficaram prontos.
 
     Um volume está pronto quando o WinRAR já começou o seguinte, ou quando terminou."""
-    def __init__(self, exe, source, name, fmt, method, split, password, popen=subprocess.Popen):
+    def __init__(self, exe, source, output, name, fmt, method, split, password, popen=subprocess.Popen):
         self.source, self.fmt, self.split = Path(source), fmt, split
         self.name = clean_name(name)
-        self.folder = self.source.parent
+        self.folder = Path(output)
         if not self.source.is_dir():
             raise ValueError('Selecione uma pasta.')
+        check_output(self.source, self.folder)
         clash = existing_output(self.folder, self.name)
         if clash:
             raise ValueError(f'Já existe {clash[0]} em {self.folder}. Escolha outro nome.')
@@ -146,6 +162,7 @@ class Compression:
         self.total = None
         self.result = None
         self.cancelled = False
+        self.suspended = False
         threading.Thread(target=self._measure, daemon=True).start()
         flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
         self.process = popen(command(exe, self.source, self.archive, fmt, method, split, password), creationflags=flags)
@@ -208,3 +225,19 @@ class Compression:
         if self.running:
             self.cancelled = True
             self.process.terminate()
+
+    def _native(self, call):
+        handle = getattr(self.process, '_handle', None)
+        if os.name == 'nt' and handle is not None:
+            getattr(ctypes.windll.ntdll, call)(int(handle))
+
+    def suspend(self):
+        """Congela o WinRAR (o disco fica livre para o upload) sem perder o progresso."""
+        if self.running and not self.suspended:
+            self._native('NtSuspendProcess')
+            self.suspended = True
+
+    def resume(self):
+        if self.suspended:
+            self._native('NtResumeProcess')
+            self.suspended = False

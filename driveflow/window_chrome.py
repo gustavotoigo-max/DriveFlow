@@ -45,7 +45,9 @@ def make_frameless(window):
 
 
 def apply_native_style(window):
-    """Devolve ao Windows bordas de redimensionamento, animações e sombra."""
+    """Devolve ao Windows bordas de redimensionamento, animações e sombra.
+
+    Janelas internas (QDialog) não ganham minimizar e maximizar."""
     if not windows():
         return
     try:
@@ -57,7 +59,9 @@ def apply_native_style(window):
         get_style.argtypes = [ctypes.c_void_p, ctypes.c_int]
         set_style.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_ssize_t]
         style = get_style(hwnd, GWL_STYLE)
-        set_style(hwnd, GWL_STYLE, style | WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU)
+        from PySide6.QtWidgets import QDialog
+        boxes = 0 if isinstance(window, QDialog) else WS_MINIMIZEBOX | WS_MAXIMIZEBOX
+        set_style(hwnd, GWL_STYLE, style | WS_CAPTION | WS_THICKFRAME | boxes | WS_SYSMENU)
         # 1 px de vidro na base mantém a sombra do Windows.
         dwm.DwmExtendFrameIntoClientArea(ctypes.c_void_p(hwnd), ctypes.byref(_Margins(0, 0, 0, 1)))
         corner = ctypes.c_int(DWMWCP_ROUND)
@@ -66,7 +70,7 @@ def apply_native_style(window):
         pass  # Windows 10 sem cantos arredondados, ou API indisponível.
 
 
-def native_event(window, event_type, message):
+def native_event(window, event_type, message, resizable=True):
     """Trata WM_NCCALCSIZE (sem moldura) e WM_NCHITTEST (bordas). None = deixar o Qt tratar."""
     if not windows() or event_type != b'windows_generic_MSG':
         return None
@@ -87,7 +91,7 @@ def native_event(window, event_type, message):
             rect.right -= fx
             rect.bottom -= fy
         return True, 0
-    if msg.message == WM_NCHITTEST and not user32.IsZoomed(msg.hWnd):
+    if msg.message == WM_NCHITTEST and resizable and not user32.IsZoomed(msg.hWnd):
         rect = wintypes.RECT()
         user32.GetWindowRect(msg.hWnd, ctypes.byref(rect))
         x, y = ctypes.c_short(msg.lParam & 0xFFFF).value, ctypes.c_short((msg.lParam >> 16) & 0xFFFF).value
@@ -106,9 +110,10 @@ class TitleBar(QFrame):
     """Cabeçalho azul-marinho que também é a barra da janela."""
     HEIGHT = 40
 
-    def __init__(self, window):
+    def __init__(self, window, dialog=False):
         super().__init__()
         self.window_ref = window
+        self.dialog = dialog
         self.setObjectName('titleBar')
         self.setFixedHeight(self.HEIGHT)
         self.layout_ = QHBoxLayout(self)
@@ -136,6 +141,9 @@ class TitleBar(QFrame):
         if enabled():
             self.layout_.addSpacing(6)
             self.layout_.addLayout(self.captions)
+            if self.dialog:
+                self.minimize.hide()
+                self.maximize.hide()
         else:
             for btn in (self.minimize, self.maximize, self.close_button):
                 btn.hide()
@@ -163,7 +171,7 @@ class TitleBar(QFrame):
         super().mousePressEvent(event)
 
     def mouseDoubleClickEvent(self, event):
-        if enabled() and event.button() == Qt.MouseButton.LeftButton and not self._on_button(event.position().toPoint()):
+        if enabled() and not self.dialog and event.button() == Qt.MouseButton.LeftButton and not self._on_button(event.position().toPoint()):
             self.toggle_maximize()
             event.accept()
             return

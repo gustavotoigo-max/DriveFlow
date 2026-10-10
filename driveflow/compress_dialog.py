@@ -1,34 +1,26 @@
 from pathlib import Path
 
-from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit, QRadioButton, QButtonGroup,
-                               QComboBox, QDoubleSpinBox, QCheckBox, QFileDialog, QDialogButtonBox, QMessageBox)
+from PySide6.QtWidgets import (QHBoxLayout, QFormLayout, QLineEdit, QRadioButton, QButtonGroup, QComboBox,
+                               QDoubleSpinBox, QCheckBox, QFileDialog)
 
 from . import winrar
-from .widgets import label, button
+from . import dialogs
+from .widgets import button
 
 CUSTOM = 'Tamanho personalizado'
 
 
-class CompressDialog(QDialog):
-    """Opções passadas ao WinRAR. Uma pasta por vez."""
-    def __init__(self, parent, folder, destination, options, start):
-        super().__init__(parent)
+class CompressDialog(dialogs.Dialog):
+    """Opções passadas ao WinRAR. Uma pasta por vez; o dicionário é sempre 4096 KB."""
+    def __init__(self, parent, folder, output, options, start):
+        super().__init__(parent, 'Compactar com o WinRAR')
         self.start = start
         self.compression = None
-        self.setWindowTitle('Compactar pasta • DriveFlow')
-        self.setMinimumWidth(460)
-        box = QVBoxLayout(self)
-        box.setSpacing(12)
-        box.addWidget(label('Compactar com o WinRAR', 'section'))
+        self.setMinimumWidth(520)
         form = QFormLayout()
         form.setSpacing(10)
-        source_row = QHBoxLayout()
-        self.source = QLineEdit(folder or '')
-        self.source.setReadOnly(True)
-        self.source.setPlaceholderText('Selecione uma pasta…')
-        source_row.addWidget(self.source)
-        source_row.addWidget(button('Selecionar…', self.pick))
-        form.addRow('Pasta', source_row)
+        self.source = self.path_row(form, 'Pasta de origem', folder, self.pick)
+        self.output = self.path_row(form, 'Salvar volumes em', output, self.pick_output)
         self.name = QLineEdit(Path(folder).name if folder else '')
         form.addRow('Nome da pasta', self.name)
         formats = QHBoxLayout()
@@ -42,12 +34,8 @@ class CompressDialog(QDialog):
         form.addRow('Formato', formats)
         self.method = QComboBox()
         self.method.addItems(winrar.METHODS)
-        self.method.setCurrentText(options.get('method', 'Normal'))
+        self.method.setCurrentText(options.get('method') if options.get('method') in winrar.METHODS else 'Normal')
         form.addRow('Método de compressão', self.method)
-        self.dictionary = QComboBox()
-        self.dictionary.addItem(winrar.DICTIONARY)
-        self.dictionary.setEnabled(False)
-        form.addRow('Tamanho do dicionário', self.dictionary)
         split_row = QHBoxLayout()
         self.split = QComboBox()
         self.split.addItems([*winrar.SPLITS, CUSTOM])
@@ -71,16 +59,19 @@ class CompressDialog(QDialog):
         password_row.addWidget(self.password, 1)
         password_row.addWidget(show)
         form.addRow('Senha do arquivo', password_row)
-        box.addLayout(form)
-        note = label(f'Os volumes ficam ao lado da pasta e vão para {destination} assim que cada um termina.', 'muted')
-        note.setWordWrap(True)
-        box.addWidget(note)
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        buttons.button(QDialogButtonBox.StandardButton.Ok).setObjectName('primary')
-        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText('Cancelar')
-        buttons.accepted.connect(self.confirm)
-        buttons.rejected.connect(self.reject)
-        box.addWidget(buttons)
+        self.body.addLayout(form)
+        self.ok_cancel(on_ok=self.confirm)
+
+    @staticmethod
+    def path_row(form, title, value, handler):
+        row = QHBoxLayout()
+        field = QLineEdit(value or '')
+        field.setReadOnly(True)
+        field.setPlaceholderText('Selecione uma pasta…')
+        row.addWidget(field, 1)
+        row.addWidget(button('Selecionar…', handler))
+        form.addRow(title, row)
+        return field
 
     def pick(self):
         # Seletor de pasta do Windows: escolhe uma única pasta.
@@ -91,22 +82,31 @@ class CompressDialog(QDialog):
                 self.name.setText(Path(path).name)
             self.source.setText(path)
 
+    def pick_output(self):
+        path = QFileDialog.getExistingDirectory(self, 'Onde salvar os volumes', self.output.text())
+        if path:
+            self.output.setText(str(Path(path)))
+
     def options(self):
         return dict(format=self.formats.checkedButton().text(), method=self.method.currentText(),
-                    split=self.split.currentText(), custom_gb=self.custom.value())
+                    split=self.split.currentText(), custom_gb=self.custom.value(), output=self.output.text())
 
     def split_size(self):
         text = self.split.currentText()
         return winrar.split_bytes(f'{self.custom.value()} GB' if text == CUSTOM else text)
 
     def confirm(self):
-        if not self.source.text():
-            QMessageBox.information(self, 'DriveFlow', 'Selecione a pasta.')
+        if not self.source.text() or not self.output.text():
+            dialogs.message(self, 'Selecione a pasta de origem e onde salvar os volumes.')
             return
         try:
-            options = self.options()
-            self.compression = self.start(self.source.text(), self.name.text(), options, self.split_size(), self.password.text())
+            winrar.check_output(self.source.text(), self.output.text())
+            if winrar.same_disk(self.source.text(), self.output.text()) and not dialogs.ask(
+                    self, 'Mesmo disco', 'A origem e os volumes estão no mesmo disco, o que deixa a compactação mais lenta. Continuar mesmo assim?'):
+                return
+            self.compression = self.start(self.source.text(), self.output.text(), self.name.text(), self.options(),
+                                          self.split_size(), self.password.text())
         except (OSError, ValueError) as exc:
-            QMessageBox.information(self, 'DriveFlow', str(exc))
+            dialogs.message(self, str(exc))
             return
         self.accept()

@@ -219,8 +219,8 @@ def test_start_label_compress_button_and_compressed_volumes(tmp_path, monkeypatc
     monkeypatch.setattr(ui.winrar, 'find_winrar', lambda: exe)
     window.update_compress_button()
     assert window.compress_button.isEnabled()
-    source = tmp_path / 'Projeto'
-    source.mkdir()
+    source = tmp_path / 'origem' / 'Projeto'
+    source.mkdir(parents=True)
     (source / 'a.txt').write_text('a')
 
     class Process:
@@ -228,7 +228,7 @@ def test_start_label_compress_button_and_compressed_volumes(tmp_path, monkeypatc
         def poll(self):
             return self.code
     process = Process()
-    job = winrar.Compression(exe, source, 'Projeto', 'ZIP', 'Normal', 1024 ** 2, '', popen=lambda *a, **k: process)
+    job = winrar.Compression(exe, source, tmp_path, 'Projeto', 'ZIP', 'Normal', 1024 ** 2, '', popen=lambda *a, **k: process)
     job.destination, job.account = ('folder', 'Meu Drive'), auth.account_id
     window.compression = job
     window.update_compress_button()
@@ -236,6 +236,7 @@ def test_start_label_compress_button_and_compressed_volumes(tmp_path, monkeypatc
     (tmp_path / 'Projeto.z01').write_bytes(b'1' * 10)
     window.refresh()
     assert window.queue.rowCount() == 1 and window.queue.item(0, 2).text() == 'Compactando'
+    assert manager.rate_limit == 1024 * 1024  # Upload limitado a 1 MB/s durante a compactação.
     (tmp_path / 'Projeto.z02').write_bytes(b'2')
     window.refresh()
     rows = db.all()
@@ -244,11 +245,21 @@ def test_start_label_compress_button_and_compressed_volumes(tmp_path, monkeypatc
     cell = window.queue.cellWidget(0, 1)
     assert not cell.packing.isHidden() and cell.packing.value() == cell.packing.maximum()
     assert cell.bar.text() == 'Upload 0%'
+    # Avançado: com upload na fila o WinRAR pausa; sem upload ativo ele volta.
+    db.save_setting('advanced_pipeline', True)
+    window.refresh()
+    assert job.suspended and manager.rate_limit == 0
+    assert window.queue.item(1, 2).text() == 'Aguardando upload'
+    manager.pause(rows[0]['id'])
+    window.refresh()
+    assert not job.suspended
     process.code = 0
     (tmp_path / 'Projeto.zip').write_bytes(b'3')
     window.refresh()
     assert [r['name'] for r in db.all()] == ['Projeto.z01', 'Projeto.z02', 'Projeto.zip']
-    assert window.compression is None and window.compress_button.isEnabled()
+    assert window.compression is None and window.compress_button.isEnabled() and manager.rate_limit == 0
+    window.folders.folderActivated.emit()
+    assert window.destination == ('root', 'Meu Drive')
     window.show()
     app.processEvents()
     window.grab().save(str(tmp_path / 'compress.png'))

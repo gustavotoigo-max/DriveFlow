@@ -25,6 +25,36 @@ def retry(db, ident, stop, failure, limit, stage, exc):
     return True
 
 
+class Throttled:
+    """Corpo do PUT entregue aos poucos para respeitar o limite de bytes/s.
+
+    O limite é lido a cada bloco, então ligar ou desligar vale no mesmo envio."""
+    BLOCK = 64 * 1024
+
+    def __init__(self, data, limit, stop):
+        self.data, self.limit, self.stop = data, limit, stop
+        self.position = 0
+        self.started = time.monotonic()
+        self.sent = 0
+
+    def __len__(self):
+        return len(self.data)
+
+    def read(self, size=-1):
+        size = self.BLOCK if size is None or size < 0 else min(size, self.BLOCK)
+        rate = self.limit()
+        if rate > 0 and not self.stop.is_set():
+            ahead = self.sent / rate - (time.monotonic() - self.started)
+            if ahead > 0:
+                self.stop.wait(ahead)
+        elif rate <= 0:
+            self.started, self.sent = time.monotonic(), 0
+        block = self.data[self.position:self.position + size]
+        self.position += len(block)
+        self.sent += len(block)
+        return block
+
+
 class LocalFileChanged(Exception):
     pass
 
@@ -36,11 +66,11 @@ def validate(item):
 
 
 class Engine:
-    def __init__(self, db, drive, stop, chunk_size=8 * 1024 * 1024, retries=10):
+    def __init__(self, db, drive, stop, chunk_size=8 * 1024 * 1024, retries=10, limit=lambda: 0):
         if chunk_size < 256 * 1024 or chunk_size % (256 * 1024):
             raise ValueError('O bloco deve ser múltiplo de 256 KiB.')
         self.db, self.drive, self.stop = db, drive, stop
-        self.chunk_size, self.retries = chunk_size, retries
+        self.chunk_size, self.retries, self.limit = chunk_size, retries, limit
 
     def verify_completed(self, item):
         meta = self.drive.metadata(item['remote_id'])
@@ -100,7 +130,8 @@ class Engine:
                         self.db.update(ident, status='enviando', error='')
                         started = time.monotonic()
                         stage = 'send_chunk'
-                        next_offset, complete = self.drive.transfer(uri, item['size'], offset, chunk)
+                        body = Throttled(chunk, self.limit, self.stop) if self.limit() > 0 else chunk
+                        next_offset, complete = self.drive.transfer(uri, item['size'], offset, body)
                         if next_offset <= offset and not complete:
                             raise TemporaryError('O servidor ainda não confirmou novos bytes.')
                         speed = max(0, next_offset - offset) / max(.001, time.monotonic() - started)
@@ -158,6 +189,8 @@ class Manager:
         self.clocks = {}
         self.pending_removals = set()
         self.closed = False
+        # Limite de upload em bytes/s (0 = livre); a UI liga durante a compactação.
+        self.rate_limit = 0
 
     def start(self, ident):
         item = self.db.get(ident)
@@ -223,7 +256,8 @@ class Manager:
                 self.db.event(ident, f'AUTH_ERROR stage=authentication reason={exc}')
                 return
             with session:
-                Engine(self.db, Drive(session), stop, self.db.setting('chunk_mib', 8) * 1024 * 1024, limit).run(ident)
+                Engine(self.db, Drive(session), stop, self.db.setting('chunk_mib', 8) * 1024 * 1024, limit,
+                       lambda: self.rate_limit / max(1, len(self.running))).run(ident)
             return
         self.db.update(ident, status='pausado', speed=0)
         self.db.event(ident, 'UPLOAD_PAUSED')
