@@ -141,3 +141,32 @@ def test_continue_adds_local_files_and_only_starts_checked_queue(tmp_path, monke
     window.close()
     app.processEvents()
     db.conn.close()
+
+
+def test_login_uses_bundled_client_without_asking_for_json(tmp_path, monkeypatch):
+    import driveflow.ui as ui
+    from driveflow.auth import FULL
+    monkeypatch.setenv('DRIVEFLOW_DATA_DIR', str(tmp_path / 'state'))
+    app = QApplication.instance() or QApplication([])
+    config = {'installed': {'client_id': 'id', 'client_secret': 'secret'}}
+    monkeypatch.setattr(ui, 'bundled_client', lambda: config)
+    db, auth = Database(tmp_path / 'queue.sqlite3'), Auth()
+    manager = Manager(db, auth)
+    monkeypatch.setattr(manager, 'tick', lambda: None)
+    window = MainWindow(db, auth, manager)
+    window.timer.stop()
+    assert window.connect_btn.text() == 'Entrar com Google'
+    calls = []
+    monkeypatch.setattr(ui.QFileDialog, 'getOpenFileName', lambda *a: calls.append('dialog') or ('', ''))
+    monkeypatch.setattr(window, 'task', lambda fn, cb, **kw: calls.append(fn))
+    monkeypatch.setattr(auth, 'login', lambda client, full: calls.append((client, full)))
+    window.connect_account()
+    assert len(calls) == 1 and callable(calls[0])
+    calls.pop()()
+    assert calls == [(config, True)]  # Full Drive access is the default.
+    calls.clear()
+    monkeypatch.setattr(ui, 'bundled_client', lambda: None)
+    window.connect_account()
+    assert calls == ['dialog']
+    manager.pool.shutdown()
+    db.conn.close()

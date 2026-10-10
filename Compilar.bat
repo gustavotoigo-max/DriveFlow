@@ -4,6 +4,7 @@ setlocal
 ".venv\Scripts\python.exe" -m pip install -r requirements-monitoring.txt pyinstaller
 if errorlevel 1 exit /b 1
 ".venv\Scripts\python.exe" tools\make_icon.py
+if not exist "driveflow\oauth_client.json" echo AVISO: driveflow\oauth_client.json ausente. O executavel pedira o JSON OAuth ao conectar.
 if errorlevel 1 exit /b 1
 ".venv\Scripts\python.exe" -m PyInstaller --noconfirm DriveFlow.spec
 if errorlevel 1 exit /b 1

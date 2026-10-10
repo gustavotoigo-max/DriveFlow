@@ -54,6 +54,8 @@ Requer Windows 10/11 x64. Para executar pelo código, Python 3.11 ou superior. A
 
 ## Conectar o Google Drive
 
+Com o cliente OAuth embutido na compilação, basta clicar em **Entrar com Google**. Veja [como embutir o cliente e publicar o app OAuth](docs/login-google.md). Sem ele, siga os passos abaixo.
+
 1. No [Google Cloud Console](https://console.cloud.google.com/), crie ou selecione um projeto.
 2. Habilite a **Google Drive API** em APIs e serviços.
 3. Configure o Google Auth Platform / tela de consentimento. Para uso pessoal em teste, adicione o e-mail que usará o aplicativo como usuário de teste. Em uma organização Workspace, use o tipo interno se disponível.

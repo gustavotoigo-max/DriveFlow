@@ -5,6 +5,7 @@ __pycache__/
 build/
 dist/
 client_secret*.json
+oauth_client*.json
 credentials*.json
 .test-data/
 *service-account*.json
