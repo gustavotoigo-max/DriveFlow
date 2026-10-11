@@ -110,11 +110,23 @@ def prepare_install(path, release, target):
     return job
 
 
+def clean_environment(environ=None):
+    """Environment for processes that start another DriveFlow executable.
+
+    The one-file bootloader passes its temporary folder (_MEI…) through these
+    variables; a new executable that inherits them looks for python3xx.dll in a
+    folder that is deleted when this app closes."""
+    env = {k: v for k, v in (os.environ if environ is None else environ).items()
+           if not k.upper().startswith('_PYI_') and k.upper() not in ('_MEIPASS', '_MEIPASS2')}
+    env['PYINSTALLER_RESET_ENVIRONMENT'] = '1'
+    return env
+
+
 def launch_install(job):
     powershell = Path(os.environ['WINDIR']) / 'System32/WindowsPowerShell/v1.0/powershell.exe'
     subprocess.Popen([str(powershell), '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
                       '-File', str(job.with_name('install.ps1')), '-JobFile', str(job)],
-                     creationflags=subprocess.CREATE_NO_WINDOW, close_fds=True)
+                     creationflags=subprocess.CREATE_NO_WINDOW, close_fds=True, env=clean_environment())
 
 
 def last_result():

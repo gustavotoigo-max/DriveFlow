@@ -59,3 +59,11 @@ def test_prepare_does_not_replace_installed_executable(tmp_path):
     assert target.read_bytes()==b'MZold'
     stage.write_bytes(b'MZtampered')
     with pytest.raises(ValueError): updater.prepare_install(stage, info, target)
+
+
+def test_install_helper_does_not_inherit_one_file_temp_folder():
+    env = updater.clean_environment({'PATH': 'C:/Windows', '_PYI_APPLICATION_HOME_DIR': 'C:/Temp/_MEI123',
+                                     '_PYI_ARCHIVE_FILE': 'C:/DriveFlow.exe', '_PYI_PARENT_PROCESS_LEVEL': '1', '_MEIPASS2': 'x'})
+    assert env == {'PATH': 'C:/Windows', 'PYINSTALLER_RESET_ENVIRONMENT': '1'}
+    helper = Path(updater.__file__).with_name('update_helper.ps1').read_text(encoding='utf-8-sig')
+    assert helper.index("PYINSTALLER_RESET_ENVIRONMENT") < helper.index('Start-Process')

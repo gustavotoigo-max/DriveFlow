@@ -1,5 +1,9 @@
 # Histórico de versões
 
+## Desktop v1.4.1 — 11/10/2026
+
+- Corrige a atualização pela interface: a nova versão fechava com "Failed to load Python DLL" porque herdava a pasta temporária da versão anterior. Vale para as próximas atualizações; quem está na 1.3.0 ou anterior instala esta versão manualmente uma vez.
+
 ## Desktop v1.4.0 — 11/10/2026
 
 - Botão **Compactar** acima da fila: compacta uma pasta com o WinRAR instalado (RAR ou ZIP, método, dicionário 4096 KB, volumes de 20, 25, 30 GB ou personalizado, senha). Fica apagado quando o WinRAR não é encontrado.
