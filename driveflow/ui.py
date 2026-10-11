@@ -24,6 +24,7 @@ from .charts import ChartsPage, duration
 from . import winrar
 from . import dialogs
 from .compress_dialog import CompressDialog
+from .whatsapp import Notifier, normalize
 
 
 class Bridge(QObject):
@@ -40,6 +41,7 @@ class MainWindow(QMainWindow):
         self.busy = 0
         self.auth_busy = False
         self.completed_ids = {x['id'] for x in db.all() if x['status'] == 'concluído'}
+        self.notifier = Notifier(db)
         self.closing = False
         self.update_job = None
         self.available_update = None
@@ -400,6 +402,7 @@ class MainWindow(QMainWindow):
         box.addWidget(self.update_button)
         box.addWidget(self.install_button)
         layout.addWidget(frame)
+        layout.addWidget(self.whatsapp_panel())
         frame, box = self.panel()
         box.addWidget(label('Conta e dados', 'section'))
         if not bundled_client():
@@ -492,7 +495,7 @@ class MainWindow(QMainWindow):
         errors = []
         for path in job.poll():
             try:
-                ident = self.db.add(path, *job.destination, job.account, compressed=True)
+                ident = self.db.add(path, *job.destination, job.account, compressed=True, notify_name=Path(job.source).name)
                 self.db.event(ident, 'ADDED_TO_QUEUE_FROM_COMPRESSION')
                 self.manager.start(ident)
             except (OSError, ValueError) as exc:
@@ -539,6 +542,99 @@ class MainWindow(QMainWindow):
         stopped = any(x['status'] not in ('concluído', 'cancelado') and x['id'] not in self.manager.running
                       and (x['offset'] or x['remote_id'] or x['elapsed']) for x in rows)
         return 'Continuar' if stopped else 'Iniciar'
+
+    def whatsapp_panel(self):
+        frame, box = self.panel()
+        box.addWidget(label('Notificações WhatsApp', 'section'))
+        note = label('Ao terminar os uploads de uma pasta, envia "PASTA UPLOAD FINALIZADO" pelo CallMeBot. '
+                     'Cada número precisa ser ativado no callmebot.com para receber sua apikey.', 'muted')
+        note.setWordWrap(True)
+        box.addWidget(note)
+        self.whatsapp_enabled = QCheckBox('Enviar notificação ao finalizar upload')
+        self.whatsapp_enabled.setChecked(self.notifier.config().get('enabled') is True)
+        box.addWidget(self.whatsapp_enabled)
+        form = QFormLayout()
+        form.setSpacing(12)
+        self.whatsapp_phone = QLineEdit()
+        self.whatsapp_phone.setPlaceholderText('Número com DDI e DDD, ex.: 5511999998888')
+        self.whatsapp_apikey = QLineEdit()
+        self.whatsapp_apikey.setPlaceholderText('Apikey recebida do CallMeBot')
+        self.whatsapp_apikey.returnPressed.connect(self.add_whatsapp_number)
+        form.addRow('Número', self.whatsapp_phone)
+        form.addRow('Apikey', self.whatsapp_apikey)
+        box.addLayout(form)
+        add_row = QHBoxLayout()
+        add_row.addWidget(button('Adicionar número', self.add_whatsapp_number))
+        add_row.addWidget(button('Enviar teste', self.test_whatsapp))
+        add_row.addStretch()
+        box.addLayout(add_row)
+        box.addWidget(label('Números cadastrados', 'muted'))
+        self.whatsapp_list = QListWidget()
+        self.whatsapp_list.setMinimumHeight(110)
+        for phone, apikey in self.notifier.recipients():
+            self.add_whatsapp_item(phone, apikey)
+        box.addWidget(self.whatsapp_list)
+        row = QHBoxLayout()
+        row.addWidget(button('Remover selecionado', self.remove_whatsapp_row))
+        row.addStretch()
+        row.addWidget(button('Salvar notificações', self.save_whatsapp, True))
+        box.addLayout(row)
+        return frame
+
+    def add_whatsapp_item(self, phone, apikey):
+        item = QListWidgetItem(f'{phone}    apikey ••••{apikey[-2:]}')
+        item.setData(Qt.ItemDataRole.UserRole, (phone, apikey))
+        self.whatsapp_list.addItem(item)
+
+    def add_whatsapp_number(self):
+        phone, apikey = normalize(self.whatsapp_phone.text()), self.whatsapp_apikey.text().strip()
+        if len(phone) < 10 or not apikey:
+            self.notice('Informe o número com DDI e DDD (ex.: 5511999998888) e a apikey.')
+            return False
+        for row in range(self.whatsapp_list.count()):
+            if self.whatsapp_list.item(row).data(Qt.ItemDataRole.UserRole)[0] == phone:
+                self.whatsapp_list.takeItem(row)
+                break
+        self.add_whatsapp_item(phone, apikey)
+        self.whatsapp_phone.clear()
+        self.whatsapp_apikey.clear()
+        self.show_status('Número adicionado. Clique em Salvar notificações.', 6000)
+        return True
+
+    def remove_whatsapp_row(self):
+        if self.whatsapp_list.currentRow() >= 0:
+            self.whatsapp_list.takeItem(self.whatsapp_list.currentRow())
+
+    def whatsapp_rows(self):
+        return [tuple(self.whatsapp_list.item(row).data(Qt.ItemDataRole.UserRole)) for row in range(self.whatsapp_list.count())]
+
+    def save_whatsapp(self):
+        # Fields typed but not added yet still count, so nothing typed is lost.
+        if self.whatsapp_phone.text().strip() or self.whatsapp_apikey.text().strip():
+            if not self.add_whatsapp_number():
+                return False
+        rows = self.whatsapp_rows()
+        if self.whatsapp_enabled.isChecked() and not rows:
+            self.notice('Adicione ao menos um número para ativar as notificações.')
+            return False
+        try:
+            self.notifier.save(self.whatsapp_enabled.isChecked(), rows)
+        except Exception:
+            self.notice('Não foi possível proteger a apikey neste computador.')
+            return False
+        self.show_status('Notificações salvas.', 6000)
+        return True
+
+    def test_whatsapp(self):
+        if self.whatsapp_phone.text().strip() or self.whatsapp_apikey.text().strip():
+            if not self.add_whatsapp_number():
+                return
+        rows = self.whatsapp_rows()
+        if not rows:
+            self.notice('Informe o número e a apikey.')
+            return
+        self.task(lambda: self.notifier.notify('DriveFlow TESTE UPLOAD FINALIZADO', rows, wait=True),
+                  lambda errors: self.notice('\n'.join(errors) if errors else 'Teste enviado. Confira o WhatsApp.'))
 
     def refresh_watched_folders(self):
         self.update_compress_button()
@@ -944,14 +1040,14 @@ class MainWindow(QMainWindow):
                     upper = ids.get(relative.parent, parent)
                     ids[relative] = drive.folder(upper, relative.name)
                     for name in sorted(names):
-                        files.append((os.path.join(root, name), ids[relative], f'{parent_name}/{relative.as_posix()}'))
+                        files.append((os.path.join(root, name), ids[relative], f'{parent_name}/{relative.as_posix()}', Path(folder).name))
             return files
 
         def queued(files):
             errors = []
-            for path, folder_id, folder_name in files:
+            for path, folder_id, folder_name, batch in files:
                 try:
-                    ident = self.db.add(path, folder_id, folder_name, account)
+                    ident = self.db.add(path, folder_id, folder_name, account, notify_name=batch)
                     self.db.event(ident, 'ADDED_TO_QUEUE_FROM_FOLDER')
                     self.manager.start(ident)
                 except (OSError, ValueError) as exc:
@@ -1236,6 +1332,11 @@ class MainWindow(QMainWindow):
         self.charts.sample(rows, self.manager.running, self.db.setting('theme', 'Automático'))
         newly_done = [x for x in done if x['id'] not in self.completed_ids]
         self.completed_ids = {x['id'] for x in done}
+        active = rows
+        if self.compression is not None:
+            # Volumes ainda por vir seguram o aviso até o último subir.
+            active = rows + [dict(account=self.compression.account, notify_name=Path(self.compression.source).name, status='aguardando')]
+        self.notifier.uploads_completed(active, newly_done)
         if self.auth.account_id:
             for folder_id in {x['folder_id'] for x in newly_done if x['account'] == self.auth.account_id}:
                 self.folders.refresh_folder(folder_id)

@@ -17,6 +17,7 @@
 - Atualizar no Drive recarrega todas as pastas abertas.
 - Árvores mantêm a hierarquia: abrir uma pasta não desloca a lista nem troca a raiz.
 - Aviso na tela quando já existe no destino do Drive um arquivo com o mesmo nome; o Compactar confere os nomes dos volumes antes de começar.
+- Notificação no WhatsApp pelo CallMeBot quando os uploads de uma pasta terminam: "NOME DA PASTA UPLOAD FINALIZADO". Números e apikeys em Configurações, com botão de teste. Veja docs/notificacoes-whatsapp.md.
 - Pastas podem ser marcadas: Iniciar envia a pasta com as subpastas recriadas no Drive; Compactar usa a pasta marcada como origem e nome.
 
 ## Desktop v1.3.0 — 10/10/2026

@@ -9,6 +9,11 @@ a versão anterior e abra o novo arquivo. Configurações e fila permanecem em
 acompanham os downloads. Veja [o guia de pareamento](docs/android-monitor.md).
 Veja [como atualizar pela interface](docs/atualizacoes.md). As seções v1.0.5 abaixo documentam a distribuição anterior.
 
+## Notificações WhatsApp
+
+Ao terminar os uploads de uma pasta, o DriveFlow pode avisar no WhatsApp com "NOME DA PASTA UPLOAD FINALIZADO".
+Veja [como ativar os números e configurar](docs/notificacoes-whatsapp.md).
+
 ## Monitoramento Firebase (código-fonte)
 
 O Android com pareamento QR e temas está em `android/`, adaptado ao Spark e sem notificações.
