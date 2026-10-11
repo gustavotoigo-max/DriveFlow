@@ -1,5 +1,10 @@
 ﻿param([Parameter(Mandatory=$true)][string]$JobFile)
 $ErrorActionPreference = 'Stop'
+# Variables from the old one-file process would make the new executable look for its
+# Python DLL in the old app's temporary folder, which is deleted when it closes.
+Get-ChildItem Env: | Where-Object { $_.Name -like '_PYI_*' -or $_.Name -in @('_MEIPASS', '_MEIPASS2') } |
+    ForEach-Object { Remove-Item -LiteralPath ('Env:' + $_.Name) -ErrorAction SilentlyContinue }
+$env:PYINSTALLER_RESET_ENVIRONMENT = '1'
 $job = Get-Content -LiteralPath $JobFile -Raw | ConvertFrom-Json
 $log = Join-Path (Split-Path -Parent $JobFile) 'result.txt'
 $pending = $job.target + '.update-pending'

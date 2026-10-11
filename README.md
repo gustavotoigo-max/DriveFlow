@@ -1,9 +1,9 @@
 # Distribuições atuais
 
-- [Desktop Windows 1.4.0 — executável portátil](https://github.com/gustavotoigo-max/DriveFlow/releases/tag/v1.4.0).
+- [Desktop Windows 1.4.1 — executável portátil](https://github.com/gustavotoigo-max/DriveFlow/releases/tag/v1.4.1).
 - [Android Monitor 0.2.2 — APK compatível](https://github.com/gustavotoigo-max/DriveFlow/releases/tag/android-v0.2.2).
 
-O desktop 1.4.0 traz o botão Compactar (WinRAR), envio de pastas com subpastas e notificação no WhatsApp ao finalizar uploads. Inclui Firebase, pareamento QR, atualização automática de pastas e atualizador pela interface. Baixe o executável portátil, feche
+O desktop 1.4.x traz o botão Compactar (WinRAR), envio de pastas com subpastas e notificação no WhatsApp ao finalizar uploads. Inclui Firebase, pareamento QR, atualização automática de pastas e atualizador pela interface. Baixe o executável portátil, feche
 a versão anterior e abra o novo arquivo. Configurações e fila permanecem em
 `%LOCALAPPDATA%/DriveFlow`. As credenciais são configuradas separadamente e não
 acompanham os downloads. Veja [o guia de pareamento](docs/android-monitor.md).
