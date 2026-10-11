@@ -1,5 +1,24 @@
 # Histórico de versões
 
+## Próxima versão (não publicada)
+
+- Botão **Compactar** acima da fila: compacta uma pasta com o WinRAR instalado (RAR ou ZIP, método, dicionário 4096 KB, volumes de 20, 25, 30 GB ou personalizado, senha). Fica apagado quando o WinRAR não é encontrado.
+- Cada volume entra na fila e começa a subir assim que o WinRAR passa para o próximo. A barra de compactação aparece acima da de upload.
+- Botão **Iniciar** quando nada foi interrompido; **Continuar** só quando há envio pausado ou parado.
+- Barras de progresso redesenhadas no padrão Nexotool, com o % no centro.
+- Janelas internas (avisos, perguntas, Compactar, celular) sem a barra do Windows, no padrão da janela principal, com os botões centralizados.
+- Os volumes são salvos numa pasta escolhida, nunca na pasta de origem; um aviso aparece quando a origem e os volumes estão no mesmo disco.
+- Durante a compactação o upload fica limitado a 1 MB/s (ajustável em Configurações).
+- Opção **Compactação e Upload avançados**: compactação e upload se alternam no disco, sem rodar juntos.
+- Duplo clique numa pasta do Drive também a escolhe como destino.
+- Painéis do computador e do Drive divididos meio a meio; coluna do nome do tamanho do texto, barras maiores e centralizadas.
+- Barra concluída em azul esverdeado.
+- Novo tema **Grafite e verde** (temas Spotify, Verde escuro e Cinza grafite antigos abrem nele).
+- Atualizar no Drive recarrega todas as pastas abertas.
+- Árvores mantêm a hierarquia: abrir uma pasta não desloca a lista nem troca a raiz.
+- Aviso na tela quando já existe no destino do Drive um arquivo com o mesmo nome; o Compactar confere os nomes dos volumes antes de começar.
+- Pastas podem ser marcadas: Iniciar envia a pasta com as subpastas recriadas no Drive; Compactar usa a pasta marcada como origem e nome.
+
 ## Desktop v1.3.0 — 10/10/2026
 
 - Botão **Entrar com Google**: o cliente OAuth vai embutido na compilação e não é mais preciso selecionar o JSON a cada conexão. Importar outro JSON continua em Configurações.

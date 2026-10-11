@@ -184,7 +184,195 @@ def test_legacy_dark_theme_maps_to_dark(tmp_path, monkeypatch):
     monkeypatch.setattr(manager, 'tick', lambda: None)
     window = MainWindow(db, auth, manager)
     window.timer.stop()
-    assert window.theme.currentText() == 'Escuro'
+    assert window.theme.currentText() == 'Grafite e verde'
+    assert '#121212' in app.styleSheet() and palette('Grafite e verde')['accent'] == '#1DB954'
+    window.theme.setCurrentText('Escuro')
     assert '#0A1222' in app.styleSheet()
+    manager.pool.shutdown()
+    db.conn.close()
+
+
+def test_start_label_compress_button_and_compressed_volumes(tmp_path, monkeypatch):
+    import driveflow.ui as ui
+    from driveflow import winrar
+    monkeypatch.setenv('DRIVEFLOW_DATA_DIR', str(tmp_path / 'state'))
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(ui.winrar, 'find_winrar', lambda: None)
+    db, auth = Database(tmp_path / 'queue.sqlite3'), Auth()
+    auth.account_id = 'test-account'
+    manager = Manager(db, auth)
+    monkeypatch.setattr(manager, 'tick', lambda: None)
+    window = MainWindow(db, auth, manager)
+    window.timer.stop()
+    assert not window.compress_button.isEnabled()
+    window.refresh()
+    assert window.continue_button.text() == 'Iniciar'
+    first = tmp_path / 'first.zip'
+    first.write_bytes(b'one')
+    ident = db.add(first, 'folder', 'Meu Drive', auth.account_id)
+    window.refresh()
+    assert window.continue_button.text() == 'Iniciar'  # Nunca enviado.
+    db.update(ident, offset=1, status='interrompido')
+    window.refresh()
+    assert window.continue_button.text() == 'Continuar'
+    db.remove(ident)
+    exe = tmp_path / 'WinRAR.exe'
+    exe.write_bytes(b'')
+    monkeypatch.setattr(ui.winrar, 'find_winrar', lambda: exe)
+    window.update_compress_button()
+    assert window.compress_button.isEnabled()
+    source = tmp_path / 'origem' / 'Projeto'
+    source.mkdir(parents=True)
+    (source / 'a.txt').write_text('a')
+
+    class Process:
+        code = None
+        def poll(self):
+            return self.code
+    process = Process()
+    job = winrar.Compression(exe, source, tmp_path, 'Projeto', 'ZIP', 'Normal', 1024 ** 2, '', popen=lambda *a, **k: process)
+    job.destination, job.account = ('folder', 'Meu Drive'), auth.account_id
+    window.compression = job
+    window.update_compress_button()
+    assert not window.compress_button.isEnabled()
+    (tmp_path / 'Projeto.z01').write_bytes(b'1' * 10)
+    window.refresh()
+    assert window.queue.rowCount() == 1 and window.queue.item(0, 2).text() == 'Compactando'
+    assert manager.rate_limit == 1024 * 1024  # Upload limitado a 1 MB/s durante a compactação.
+    (tmp_path / 'Projeto.z02').write_bytes(b'2')
+    window.refresh()
+    rows = db.all()
+    assert [(r['name'], r['compressed'], r['status']) for r in rows] == [('Projeto.z01', 1, 'aguardando')]
+    assert window.queue.rowCount() == 2
+    cell = window.queue.cellWidget(0, 1)
+    assert not cell.packing.isHidden() and cell.packing.value() == cell.packing.maximum()
+    assert cell.bar.text() == 'Upload 0%'
+    # Avançado: com upload na fila o WinRAR pausa; sem upload ativo ele volta.
+    db.save_setting('advanced_pipeline', True)
+    window.refresh()
+    assert job.suspended and manager.rate_limit == 0
+    assert window.queue.item(1, 2).text() == 'Aguardando upload'
+    manager.pause(rows[0]['id'])
+    window.refresh()
+    assert not job.suspended
+    process.code = 0
+    (tmp_path / 'Projeto.zip').write_bytes(b'3')
+    window.refresh()
+    assert [r['name'] for r in db.all()] == ['Projeto.z01', 'Projeto.z02', 'Projeto.zip']
+    assert window.compression is None and window.compress_button.isEnabled() and manager.rate_limit == 0
+    window.folders.folderActivated.emit()
+    assert window.destination == ('root', 'Meu Drive')
+    window.show()
+    app.processEvents()
+    window.grab().save(str(tmp_path / 'compress.png'))
+    window.close()
+    manager.pool.shutdown()
+    db.conn.close()
+
+
+def test_drive_refresh_updates_every_open_folder_and_done_bar_color():
+    from driveflow.drive_tree import DriveTree
+    app = QApplication.instance() or QApplication([])
+    requests = []
+    tree = DriveTree(lambda fn, cb, **kw: requests.append(cb), None)
+    tree.reset_tree()
+    requests.pop()([{'id': 'a', 'name': 'A', 'mimeType': 'application/vnd.google-apps.folder'},
+                    {'id': 'b', 'name': 'B', 'mimeType': 'application/vnd.google-apps.folder'}])
+    for ident in ('a', 'b'):
+        tree.nodes[ident].setExpanded(True)
+        requests.pop()([])
+    tree.refresh_all()
+    assert len(requests) == 3  # Meu Drive, A e B.
+    bar = SmoothProgressBar()
+    bar.set_confirmed(bar.maximum(), 'x')
+    bar.resize(200, 20)
+    image = bar.grab().toImage()
+    done = image.pixelColor(20, 10)
+    assert done.green() > done.blue() * 0.6 and done.green() > done.red()  # Azul esverdeado.
+    bar.close()
+
+
+def test_compress_source_follows_upload_selection(tmp_path):
+    from driveflow.widgets import FileBrowser
+    app = QApplication.instance() or QApplication([])
+    folder = tmp_path / 'Obra'
+    folder.mkdir()
+    file = folder / 'planta.dwg'
+    file.write_bytes(b'x')
+    browser = FileBrowser()
+    browser.navigate(str(tmp_path))
+    assert browser.selected_folder() == str(tmp_path)  # Nada escolhido: pasta aberta.
+    browser.model.setData(browser.model.index(str(file)), Qt.CheckState.Checked, Qt.ItemDataRole.CheckStateRole)
+    assert browser.selected_folder() == str(folder)  # Pasta dos arquivos marcados.
+    browser.tree.setCurrentIndex(browser.model.index(str(folder)))
+    assert browser.selected_folder() == str(folder)
+    browser.close()
+
+
+def test_checked_folder_names_compression_and_uploads_with_structure(tmp_path, monkeypatch):
+    monkeypatch.setenv('DRIVEFLOW_DATA_DIR', str(tmp_path / 'state'))
+    app = QApplication.instance() or QApplication([])
+    folder = tmp_path / 'Obra 2026'
+    (folder / 'plantas').mkdir(parents=True)
+    (folder / 'memorial.pdf').write_bytes(b'1')
+    (folder / 'plantas' / 'a.dwg').write_bytes(b'2')
+    db, auth = Database(tmp_path / 'queue.sqlite3'), Auth()
+    auth.account_id = 'test-account'
+    manager = Manager(db, auth)
+    monkeypatch.setattr(manager, 'tick', lambda: None)
+    window = MainWindow(db, auth, manager)
+    window.timer.stop()
+    window.destination = ('dest', 'Meu Drive/Obras')
+    model = window.browser.model
+    assert not model.checkable(model.index('/'))  # Unidade inteira não.
+    model.setData(model.index(str(folder)), Qt.CheckState.Checked, Qt.ItemDataRole.CheckStateRole)
+    assert window.browser.selected_folder() == str(folder)
+    assert window.browser.summary.text() == '1 pasta(s) selecionado(s)'
+    created = []
+
+    class Drive:
+        def folder(self, parent, name):
+            created.append((parent, name))
+            return f'id-{name}'
+    monkeypatch.setattr(window, 'task', lambda fn, cb, **kw: cb(fn()))
+    monkeypatch.setattr(window, 'with_drive', lambda fn: fn(Drive()))
+    monkeypatch.setattr(window.folders, 'refresh_folder', lambda *a: None)
+    window.continue_button.click()
+    assert created == [('dest', 'Obra 2026'), ('id-Obra 2026', 'plantas')]
+    rows = {r['name']: r for r in db.all()}
+    assert rows['memorial.pdf']['folder_id'] == 'id-Obra 2026' and rows['memorial.pdf']['folder_name'] == 'Meu Drive/Obras/Obra 2026'
+    assert rows['a.dwg']['folder_id'] == 'id-plantas' and rows['a.dwg']['status'] == 'aguardando'
+    assert not model.checked
+    window.close()
+    manager.pool.shutdown()
+    db.conn.close()
+
+
+def test_duplicate_name_in_drive_shows_warning(tmp_path, monkeypatch):
+    monkeypatch.setenv('DRIVEFLOW_DATA_DIR', str(tmp_path / 'state'))
+    app = QApplication.instance() or QApplication([])
+    db, auth = Database(tmp_path / 'queue.sqlite3'), Auth()
+    auth.account_id = 'test-account'
+    manager = Manager(db, auth)
+    monkeypatch.setattr(manager, 'tick', lambda: None)
+    window = MainWindow(db, auth, manager)
+    window.timer.stop()
+    notices = []
+    monkeypatch.setattr(window, 'notice', notices.append)
+    file = tmp_path / 'backup.zip'
+    file.write_bytes(b'1')
+    ident = db.add(file, 'folder', 'Meu Drive/Backups', auth.account_id)
+    db.update(ident, status='nome duplicado')
+    window.refresh()
+    window.refresh()
+    app.processEvents()
+    assert len(notices) == 1 and 'backup.zip' in notices[0] and 'Meu Drive/Backups' in notices[0]
+    # Volumes já no Drive bloqueiam a compactação antes de o WinRAR começar.
+    monkeypatch.setattr(window, 'with_drive', lambda fn: fn(type('D', (), {'names_starting': lambda self, p, b: ['Obra.z01', 'Obra antiga.zip']})()))
+    import pytest
+    with pytest.raises(ValueError, match='Obra.z01'):
+        window.check_drive_names('folder', 'Obra', 'ZIP')
+    window.check_drive_names('folder', 'Obra', 'RAR')
+    window.close()
     manager.pool.shutdown()
     db.conn.close()

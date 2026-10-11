@@ -6,13 +6,13 @@ from pathlib import Path
 
 from PySide6.QtCore import QLockFile, QTimer
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication
 
 from .auth import Auth
 from .storage import Database, data_dir
 from .ui import MainWindow
 from .upload import Manager
-from . import startup
+from . import startup, dialogs
 from .version import __version__
 from .firebase_monitor import attach_monitor
 
@@ -37,7 +37,7 @@ def main():
     lock = QLockFile(str(data_dir() / 'application.lock'))
     lock.setStaleLockTime(0)
     if not lock.tryLock(100):
-        QMessageBox.information(None, 'DriveFlow', 'O DriveFlow já está aberto neste usuário do Windows.')
+        dialogs.message(None, 'O DriveFlow já está aberto neste usuário do Windows.')
         return 1
     db, auth = Database(), Auth()
     monitor = attach_monitor(db)
@@ -79,7 +79,7 @@ def main():
         try:
             launch_install(window.update_job)
         except OSError:
-            QMessageBox.warning(None, 'Atualização', 'Não foi possível iniciar o atualizador. O executável anterior foi preservado. Abra o DriveFlow novamente.')
+            dialogs.message(None, 'Não foi possível iniciar o atualizador. O executável anterior foi preservado. Abra o DriveFlow novamente.', 'Atualização')
     return code
 
 

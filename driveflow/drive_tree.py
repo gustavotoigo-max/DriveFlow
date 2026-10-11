@@ -1,8 +1,8 @@
 from PySide6.QtCore import Qt, Signal, QFileInfo
 from PySide6.QtGui import QColor, QPalette, QBrush
-from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem, QFileIconProvider, QHeaderView, QStyledItemDelegate
+from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem, QFileIconProvider, QHeaderView, QStyledItemDelegate, QAbstractItemView
 
-from .widgets import size_text
+from .widgets import size_text, keep_horizontal
 
 FOLDER = 'application/vnd.google-apps.folder'
 DESTINATION_ROLE = Qt.ItemDataRole.UserRole + 1
@@ -20,6 +20,7 @@ class DestinationDelegate(QStyledItemDelegate):
 
 class DriveTree(QTreeWidget):
     folderSelected = Signal(object)
+    folderActivated = Signal()
 
     def __init__(self, task, with_drive):
         super().__init__()
@@ -32,12 +33,26 @@ class DriveTree(QTreeWidget):
         self.loaded, self.loading = set(), set()
         self.reload_pending = set()
         self.setHeaderLabels(['NOME', 'TAMANHO'])
-        self.setIndentation(20)
+        self.setIndentation(16)
         self.setAlternatingRowColors(True)
+        self.header().setStretchLastSection(False)
         self.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.itemExpanded.connect(self.load)
         self.currentItemChanged.connect(lambda *_: self.folderSelected.emit(self.path()))
+        # Duplo clique numa pasta também a escolhe como destino.
+        self.itemDoubleClicked.connect(lambda node, _: node.data(0, Qt.ItemDataRole.UserRole)['mimeType'] == FOLDER
+                                       and self.folderActivated.emit())
+
+    def scrollTo(self, index, hint=QAbstractItemView.ScrollHint.EnsureVisible):
+        keep_horizontal(self, super().scrollTo, index, hint)
+
+    def refresh_all(self):
+        """Atualiza todas as pastas já abertas, não só a selecionada."""
+        for ident in list(self.loaded | {'root'}):
+            node = self.nodes.get(ident)
+            if node is not None:
+                self.load(node, force=True)
 
     def reset_tree(self):
         self.generation += 1

@@ -72,6 +72,9 @@ class Database:
                 self.conn.execute('ALTER TABLE uploads ADD COLUMN elapsed REAL NOT NULL DEFAULT 0')
             if 'last_confirmed' not in columns:
                 self.conn.execute("ALTER TABLE uploads ADD COLUMN last_confirmed TEXT NOT NULL DEFAULT ''")
+            if 'compressed' not in columns:
+                # Volume gerado pelo Compactar: a fila mostra a barra de compactação concluída.
+                self.conn.execute('ALTER TABLE uploads ADD COLUMN compressed INTEGER NOT NULL DEFAULT 0')
             self.conn.execute("UPDATE uploads SET folder_name=replace(folder_name, ' / ', '/')")
             self.conn.execute("UPDATE uploads SET status='interrompido', speed=0 WHERE status IN ('enviando','iniciando','retomando','aguardando')")
 
@@ -94,7 +97,7 @@ class Database:
             row = self.conn.execute('SELECT * FROM uploads WHERE id=?', (ident,)).fetchone()
             return dict(row) if row else None
 
-    def add(self, path, folder_id, folder_name, account, name=None):
+    def add(self, path, folder_id, folder_name, account, name=None, compressed=False):
         path = Path(path).resolve()
         st = path.stat()
         if not path.is_file():
@@ -104,8 +107,8 @@ class Database:
             if duplicate:
                 raise ValueError('Este arquivo ou outro com o mesmo nome já está na fila para esse destino. Renomeie o item existente antes de adicionar outro com esse nome.')
             ident = uuid.uuid4().hex
-            self.conn.execute('INSERT INTO uploads (id,path,name,size,mtime,folder_id,folder_name,account,status,created,updated) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-                              (ident, str(path), name or path.name, st.st_size, str(st.st_mtime_ns), folder_id, folder_name, account, 'pausado', now(), now()))
+            self.conn.execute('INSERT INTO uploads (id,path,name,size,mtime,folder_id,folder_name,account,status,created,updated,compressed) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+                              (ident, str(path), name or path.name, st.st_size, str(st.st_mtime_ns), folder_id, folder_name, account, 'pausado', now(), now(), int(compressed)))
             self._notify()
             return ident
 

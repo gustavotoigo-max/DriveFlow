@@ -1,8 +1,8 @@
 from pathlib import Path
 import os
 
-from PySide6.QtCore import Qt, Signal, QFileInfo, QSize, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor
+from PySide6.QtCore import Qt, Signal, QFileInfo, QSize, QPropertyAnimation, QEasingCurve, QRectF
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QLinearGradient, QPainterPath, QFont
 from PySide6.QtWidgets import (QFileSystemModel, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit,
                                QPushButton, QTreeView, QLabel, QFileDialog, QHeaderView, QFileIconProvider, QProgressBar)
 
@@ -45,11 +45,19 @@ def themed_icon(filename, color):
 
 
 class SmoothProgressBar(QProgressBar):
-    """Animate toward acknowledged bytes only, never predict network progress."""
+    """Animate toward acknowledged bytes only, never predict network progress.
+
+    Desenho do padrão Nexotool: trilho arredondado, preenchimento azul→ciano e o %
+    centralizado, legível tanto sobre o preenchimento quanto sobre o trilho."""
+    colors = dict(track='#E2E8F0', start='#2563EB', end='#22D3EE', text='#0F172A', done_start='#0D9488', done_end='#2DD4BF')
+    HEIGHT = 20
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setRange(0, 100000)
         self.setValue(0)
+        self.setFixedHeight(self.HEIGHT)
+        self.caption = ''
         self._identity = None
         self._confirmed = 0
         self.animation = QPropertyAnimation(self, b'value', self)
@@ -70,6 +78,63 @@ class SmoothProgressBar(QProgressBar):
             self.animation.start()
 
 
+    def set_caption(self, caption):
+        if caption != self.caption:
+            self.caption = caption
+            self.update()
+
+    def text(self):
+        fraction = self.value() / self.maximum() if self.maximum() else 0
+        percent = f'{fraction * 100:.0f}%' if fraction < .995 or self.value() == self.maximum() else '99%'
+        return f'{self.caption} {percent}'.strip()
+
+    def paintEvent(self, event):
+        c = self.colors
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = QRectF(self.rect())
+        radius = rect.height() / 2
+        track = QPainterPath()
+        track.addRoundedRect(rect, radius, radius)
+        painter.fillPath(track, QColor(c['track']))
+        fraction = (self.value() - self.minimum()) / max(1, self.maximum() - self.minimum())
+        fill = QRectF(rect.left(), rect.top(), rect.width() * fraction, rect.height())
+        if fill.width() > 0:
+            gradient = QLinearGradient(fill.topLeft(), fill.topRight())
+            done = self.value() >= self.maximum()
+            gradient.setColorAt(0, QColor(c['done_start' if done else 'start']))
+            gradient.setColorAt(1, QColor(c['done_end' if done else 'end']))
+            painter.save()
+            painter.setClipPath(track)
+            painter.fillRect(fill, gradient)
+            painter.restore()
+        font = QFont(self.font())
+        font.setPixelSize(11)
+        font.setWeight(QFont.Weight.DemiBold)
+        painter.setFont(font)
+        text = self.text()
+        painter.setPen(QColor(c['text']))
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
+        # Parte do texto sobre o preenchimento em branco.
+        painter.setClipRect(fill)
+        painter.setPen(QColor('#FFFFFF'))
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
+        painter.end()
+
+
+def keep_horizontal(view, scroll_to, *args):
+    """Abrir uma pasta não desloca a árvore para o lado: só a rolagem vertical acompanha."""
+    bar = view.horizontalScrollBar()
+    value = bar.value()
+    scroll_to(*args)
+    bar.setValue(value)
+
+
+class SteadyTree(QTreeView):
+    def scrollTo(self, index, hint=QTreeView.ScrollHint.EnsureVisible):
+        keep_horizontal(self, super().scrollTo, index, hint)
+
+
 class CheckedFiles(QFileSystemModel):
     selection_changed = Signal()
 
@@ -81,9 +146,19 @@ class CheckedFiles(QFileSystemModel):
 
     def flags(self, index):
         flags = super().flags(index)
-        if index.column() == 0 and not self.isDir(index):
+        if index.column() == 0 and self.checkable(index):
             flags |= Qt.ItemFlag.ItemIsUserCheckable
         return flags
+
+    def checkable(self, index):
+        """Arquivos e pastas podem ser marcados; unidades inteiras (C:\\) não."""
+        if not self.isDir(index):
+            return True
+        path = Path(self.filePath(index))
+        return bool(self.filePath(index)) and path.parent != path
+
+    def folders(self):
+        return sorted(p for p in self.checked if Path(p).is_dir())
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
         if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
@@ -91,12 +166,12 @@ class CheckedFiles(QFileSystemModel):
         return super().headerData(section, orientation, role)
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
-        if role == Qt.ItemDataRole.CheckStateRole and index.column() == 0 and not self.isDir(index):
+        if role == Qt.ItemDataRole.CheckStateRole and index.column() == 0 and self.checkable(index):
             return Qt.CheckState.Checked if self.filePath(index) in self.checked else Qt.CheckState.Unchecked
         return super().data(index, role)
 
     def setData(self, index, value, role=Qt.ItemDataRole.EditRole):
-        if role == Qt.ItemDataRole.CheckStateRole and not self.isDir(index):
+        if role == Qt.ItemDataRole.CheckStateRole and self.checkable(index):
             path = self.filePath(index)
             if value in (Qt.CheckState.Checked, Qt.CheckState.Checked.value):
                 self.checked.add(path)
@@ -131,14 +206,20 @@ class FileBrowser(QWidget):
         self.units_button.setIcon(QFileIconProvider().icon(QFileInfo(os.environ.get('SystemDrive', 'C:') + '/')))
         self.units_button.setIconSize(QSize(20, 20))
         address.addWidget(self.units_button)
-        address.addWidget(button('↑', self.up))
+        # Mesmo botão Voltar do painel do Drive (o ícone é tingido pelo tema).
+        self.up_button = button('', self.up)
+        self.up_button.setObjectName('iconButton')
+        self.up_button.setToolTip('Voltar')
+        self.up_button.setFixedSize(32, 32)
+        self.up_button.setIconSize(QSize(17, 17))
+        address.addWidget(self.up_button)
         self.path = QLineEdit()
         self.path.setPlaceholderText('Caminho da pasta…')
         self.path.returnPressed.connect(lambda: self.navigate(self.path.text()))
         address.addWidget(self.path)
         layout.addLayout(address)
         self.model = CheckedFiles()
-        self.tree = QTreeView()
+        self.tree = SteadyTree()
         self.tree.setModel(self.model)
         self.tree.setAlternatingRowColors(True)
         self.tree.setSortingEnabled(True)
@@ -147,18 +228,36 @@ class FileBrowser(QWidget):
         self.tree.setColumnWidth(1, 95)
         self.tree.hideColumn(2)
         self.tree.hideColumn(3)
-        self.tree.doubleClicked.connect(self.enter)
+        self.tree.header().setStretchLastSection(False)
+        self.tree.setIndentation(16)
         layout.addWidget(self.tree)
         bottom = QHBoxLayout()
-        self.summary = label('Nenhum arquivo selecionado', 'muted')
+        self.summary = label('Nada selecionado', 'muted')
         bottom.addWidget(self.summary)
         bottom.addStretch()
         bottom.addWidget(button('Limpar seleção', self.model.clear))
         layout.addLayout(bottom)
         self.model.selection_changed.connect(self.update_summary)
 
+    def selected_folder(self):
+        """Origem da compactação: a pasta marcada, a pasta destacada na árvore, a pasta
+        comum dos arquivos marcados ou, por fim, a pasta aberta."""
+        folders = self.model.folders()
+        if folders:
+            return folders[0]
+        index = self.tree.currentIndex()
+        if index.isValid() and self.tree.selectionModel().isSelected(index):
+            path = Path(self.model.filePath(index))
+            return str(path if self.model.isDir(index) else path.parent)
+        if self.model.checked:
+            return os.path.commonpath([str(Path(p).parent) for p in self.model.checked])
+        return self.path.text() if self.path.text() and Path(self.path.text()).is_dir() else ''
+
     def update_summary(self):
-        self.summary.setText(f'{len(self.model.checked)} arquivo(s) selecionado(s)')
+        folders = len(self.model.folders())
+        files = len(self.model.checked) - folders
+        parts = [f'{files} arquivo(s)'] * bool(files) + [f'{folders} pasta(s)'] * bool(folders)
+        self.summary.setText(' e '.join(parts) + ' selecionado(s)' if parts else 'Nada selecionado')
 
     def navigate(self, path):
         if path and not Path(path).is_dir():
@@ -166,10 +265,6 @@ class FileBrowser(QWidget):
             return
         self.tree.setRootIndex(self.model.index(path))
         self.path.setText(path)
-
-    def enter(self, index):
-        if self.model.isDir(index):
-            self.navigate(self.model.filePath(index))
 
     def up(self):
         path = Path(self.path.text())
