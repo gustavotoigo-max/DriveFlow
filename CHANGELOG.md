@@ -1,6 +1,6 @@
 # Histórico de versões
 
-## Próxima versão (não publicada)
+## Desktop v1.4.0 — 11/10/2026
 
 - Botão **Compactar** acima da fila: compacta uma pasta com o WinRAR instalado (RAR ou ZIP, método, dicionário 4096 KB, volumes de 20, 25, 30 GB ou personalizado, senha). Fica apagado quando o WinRAR não é encontrado.
 - Cada volume entra na fila e começa a subir assim que o WinRAR passa para o próximo. A barra de compactação aparece acima da de upload.
@@ -17,6 +17,7 @@
 - Atualizar no Drive recarrega todas as pastas abertas.
 - Árvores mantêm a hierarquia: abrir uma pasta não desloca a lista nem troca a raiz.
 - Aviso na tela quando já existe no destino do Drive um arquivo com o mesmo nome; o Compactar confere os nomes dos volumes antes de começar.
+- Notificação no WhatsApp pelo CallMeBot quando os uploads de uma pasta terminam: "NOME DA PASTA UPLOAD FINALIZADO". Números e apikeys em Configurações, com botão de teste. Veja docs/notificacoes-whatsapp.md.
 - Pastas podem ser marcadas: Iniciar envia a pasta com as subpastas recriadas no Drive; Compactar usa a pasta marcada como origem e nome.
 
 ## Desktop v1.3.0 — 10/10/2026
