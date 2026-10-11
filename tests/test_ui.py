@@ -346,3 +346,33 @@ def test_checked_folder_names_compression_and_uploads_with_structure(tmp_path, m
     window.close()
     manager.pool.shutdown()
     db.conn.close()
+
+
+def test_duplicate_name_in_drive_shows_warning(tmp_path, monkeypatch):
+    monkeypatch.setenv('DRIVEFLOW_DATA_DIR', str(tmp_path / 'state'))
+    app = QApplication.instance() or QApplication([])
+    db, auth = Database(tmp_path / 'queue.sqlite3'), Auth()
+    auth.account_id = 'test-account'
+    manager = Manager(db, auth)
+    monkeypatch.setattr(manager, 'tick', lambda: None)
+    window = MainWindow(db, auth, manager)
+    window.timer.stop()
+    notices = []
+    monkeypatch.setattr(window, 'notice', notices.append)
+    file = tmp_path / 'backup.zip'
+    file.write_bytes(b'1')
+    ident = db.add(file, 'folder', 'Meu Drive/Backups', auth.account_id)
+    db.update(ident, status='nome duplicado')
+    window.refresh()
+    window.refresh()
+    app.processEvents()
+    assert len(notices) == 1 and 'backup.zip' in notices[0] and 'Meu Drive/Backups' in notices[0]
+    # Volumes já no Drive bloqueiam a compactação antes de o WinRAR começar.
+    monkeypatch.setattr(window, 'with_drive', lambda fn: fn(type('D', (), {'names_starting': lambda self, p, b: ['Obra.z01', 'Obra antiga.zip']})()))
+    import pytest
+    with pytest.raises(ValueError, match='Obra.z01'):
+        window.check_drive_names('folder', 'Obra', 'ZIP')
+    window.check_drive_names('folder', 'Obra', 'RAR')
+    window.close()
+    manager.pool.shutdown()
+    db.conn.close()

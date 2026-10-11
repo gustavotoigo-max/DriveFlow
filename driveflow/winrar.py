@@ -87,13 +87,16 @@ def volume_order(name, fmt):
     return 0 if name.lower().endswith('.rar') else None
 
 
+def is_volume(name, base, fmt):
+    if not name.lower().startswith(base.lower()):
+        return False
+    suffix = name[len(base):]
+    return bool(fmt == 'ZIP' and re.fullmatch(r'\.(z\d{2,}|zip)', suffix, re.IGNORECASE) or
+                fmt == 'RAR' and re.fullmatch(r'(\.part\d+)?\.rar', suffix, re.IGNORECASE))
+
+
 def volumes(folder, base, fmt):
-    found = []
-    for path in Path(folder).glob(base + '.*'):
-        suffix = path.name[len(base):]
-        if fmt == 'ZIP' and re.fullmatch(r'\.(z\d{2,}|zip)', suffix, re.IGNORECASE) or \
-           fmt == 'RAR' and re.fullmatch(r'(\.part\d+)?\.rar', suffix, re.IGNORECASE):
-            found.append(path)
+    found = [path for path in Path(folder).iterdir() if is_volume(path.name, base, fmt)]
     return sorted(found, key=lambda path: volume_order(path.name, fmt))
 
 

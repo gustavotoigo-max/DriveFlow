@@ -78,6 +78,9 @@ class Drive:
         return self.checked(self.request('POST', API + '/files', params={'fields': 'id,name', 'supportsAllDrives': 'true'},
                                         json={'name': name, 'parents': [parent], 'mimeType': 'application/vnd.google-apps.folder'}))
 
+    def names_starting(self, parent, prefix):
+        return [row['name'] for row in self.list_files(f"'{escape(parent)}' in parents and trashed=false and name contains '{escape(prefix)}'")]
+
     def folder(self, parent, name):
         """Pasta existente com esse nome no destino, ou uma nova."""
         for row in self.duplicates(parent, name):

@@ -16,6 +16,7 @@
 - Novo tema **Grafite e verde** (temas Spotify, Verde escuro e Cinza grafite antigos abrem nele).
 - Atualizar no Drive recarrega todas as pastas abertas.
 - Árvores mantêm a hierarquia: abrir uma pasta não desloca a lista nem troca a raiz.
+- Aviso na tela quando já existe no destino do Drive um arquivo com o mesmo nome; o Compactar confere os nomes dos volumes antes de começar.
 - Pastas podem ser marcadas: Iniciar envia a pasta com as subpastas recriadas no Drive; Compactar usa a pasta marcada como origem e nome.
 
 ## Desktop v1.3.0 — 10/10/2026

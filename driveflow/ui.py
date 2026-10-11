@@ -45,6 +45,7 @@ class MainWindow(QMainWindow):
         self.available_update = None
         self.downloaded_update = None
         self.compression = None
+        self.duplicate_warned = {x['id'] for x in db.all() if x['status'] == 'nome duplicado'}
         self.winrar = winrar.find_winrar()
         self.bridge = Bridge()
         self.bridge.result.connect(self.task_done)
@@ -439,6 +440,7 @@ class MainWindow(QMainWindow):
         destination, account = self.destination, self.auth.account_id
 
         def start(source, output, name, options, split, password):
+            self.check_drive_names(destination[0], winrar.clean_name(name), options['format'])
             job = winrar.Compression(self.winrar, source, output, name, options['format'], options['method'], split, password)
             job.destination, job.account = destination, account
             self.db.save_setting('compress_options', options)
@@ -457,6 +459,30 @@ class MainWindow(QMainWindow):
                 self.browser.model.setData(self.browser.model.index(source), Qt.CheckState.Unchecked, Qt.ItemDataRole.CheckStateRole)
             self.update_compress_button()
             self.refresh()
+
+    def check_drive_names(self, folder_id, base, fmt):
+        """Antes de compactar: volumes com o mesmo nome já no destino do Drive."""
+        try:
+            names = self.with_drive(lambda drive: drive.names_starting(folder_id, base))
+        except Exception as exc:
+            self.db.event('', f'DRIVE_NAME_CHECK_FAILED type={type(exc).__name__}')
+            return  # Sem conexão: o envio ainda confere cada volume antes de subir.
+        clash = sorted(name for name in names if winrar.is_volume(name, base, fmt))
+        if clash:
+            raise ValueError(f'Já existe {clash[0]} na pasta de destino do Drive. Escolha outro nome.')
+
+    def warn_duplicates(self, rows):
+        current = [x for x in rows if x['status'] == 'nome duplicado']
+        fresh = [x for x in current if x['id'] not in self.duplicate_warned]
+        # Renomeado e de novo duplicado avisa outra vez.
+        self.duplicate_warned = {x['id'] for x in current}
+        if not fresh:
+            return
+        names = '\n'.join(f'• {x["name"]}  ({x["folder_name"]})' for x in fresh)
+        # Fora do refresh: o aviso é modal e o timer continua rodando.
+        QTimer.singleShot(0, lambda: self.notice(
+            f'Já existe um arquivo com o mesmo nome na pasta de destino do Drive:\n{names}\n\n'
+            'Renomeie o item na fila (botão direito) ou remova o arquivo do Drive e clique em Continuar.'))
 
     def poll_compression(self):
         job = self.compression
@@ -1200,6 +1226,7 @@ class MainWindow(QMainWindow):
         self.stats[2].setText(size_text(sum(x['speed'] for x in rows)) + '/s')
         self.stats[3].setText(str(len(done)))
         self.continue_button.setText(self.continue_text(pending))
+        self.warn_duplicates(pending)
         if self.compression is not None:
             pending = pending + [self.compression_row()]
         self.fill_rows(self.queue, pending)
