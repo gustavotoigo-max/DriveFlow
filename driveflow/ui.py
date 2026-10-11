@@ -432,6 +432,9 @@ class MainWindow(QMainWindow):
         if not self.destination or not self.auth.account_id:
             self.notice('Escolha a pasta de destino e clique em Usar esta pasta.')
             return
+        if len(self.browser.model.folders()) > 1:
+            self.notice('Marque só uma pasta para compactar.')
+            return
         current = self.browser.selected_folder()
         destination, account = self.destination, self.auth.account_id
 
@@ -448,6 +451,10 @@ class MainWindow(QMainWindow):
                                 self.compress_button.icon())
         if dialog.exec() and dialog.compression:
             self.compression = dialog.compression
+            # A pasta compactada sobe pelos volumes, não arquivo por arquivo.
+            source = str(self.compression.source)
+            if source in self.browser.model.checked:
+                self.browser.model.setData(self.browser.model.index(source), Qt.CheckState.Unchecked, Qt.ItemDataRole.CheckStateRole)
             self.update_compress_button()
             self.refresh()
 
@@ -874,11 +881,14 @@ class MainWindow(QMainWindow):
             self.notice('Escolha a pasta de destino e clique em Usar esta pasta.')
             return
         if not self.browser.model.checked:
-            self.notice('Marque ao menos um arquivo.')
+            self.notice('Marque ao menos um arquivo ou pasta.')
             return
+        folders = self.browser.model.folders()
+        if folders:
+            self.enqueue_folders(folders)
         errors = []
         added = []
-        for path in sorted(self.browser.model.checked):
+        for path in sorted(set(self.browser.model.checked) - set(folders)):
             try:
                 ident = self.db.add(path, *self.destination, self.auth.account_id)
                 added.append(path)
@@ -890,6 +900,41 @@ class MainWindow(QMainWindow):
         if errors:
             self.notice('\n'.join(errors))
         return True
+
+    def enqueue_folders(self, folders):
+        """Pastas marcadas sobem com a mesma estrutura de subpastas no Drive."""
+        (parent, parent_name), account = self.destination, self.auth.account_id
+        for folder in folders:
+            self.browser.model.setData(self.browser.model.index(folder), Qt.CheckState.Unchecked, Qt.ItemDataRole.CheckStateRole)
+
+        def build(drive):
+            files = []
+            for folder in folders:
+                ids = {}
+                for root, dirs, names in os.walk(folder):
+                    dirs.sort()
+                    relative = Path(root).relative_to(Path(folder).parent)
+                    upper = ids.get(relative.parent, parent)
+                    ids[relative] = drive.folder(upper, relative.name)
+                    for name in sorted(names):
+                        files.append((os.path.join(root, name), ids[relative], f'{parent_name}/{relative.as_posix()}'))
+            return files
+
+        def queued(files):
+            errors = []
+            for path, folder_id, folder_name in files:
+                try:
+                    ident = self.db.add(path, folder_id, folder_name, account)
+                    self.db.event(ident, 'ADDED_TO_QUEUE_FROM_FOLDER')
+                    self.manager.start(ident)
+                except (OSError, ValueError) as exc:
+                    errors.append(f'{Path(path).name}: {exc}')
+            self.folders.refresh_folder(parent)
+            self.refresh()
+            if errors:
+                self.notice('\n'.join(errors))
+        self.show_status('Criando as pastas no Drive…', 8000)
+        self.task(lambda: self.with_drive(build), queued)
 
     def selected(self, table=None):
         table = table if table is not None else self.queue

@@ -146,9 +146,19 @@ class CheckedFiles(QFileSystemModel):
 
     def flags(self, index):
         flags = super().flags(index)
-        if index.column() == 0 and not self.isDir(index):
+        if index.column() == 0 and self.checkable(index):
             flags |= Qt.ItemFlag.ItemIsUserCheckable
         return flags
+
+    def checkable(self, index):
+        """Arquivos e pastas podem ser marcados; unidades inteiras (C:\\) não."""
+        if not self.isDir(index):
+            return True
+        path = Path(self.filePath(index))
+        return bool(self.filePath(index)) and path.parent != path
+
+    def folders(self):
+        return sorted(p for p in self.checked if Path(p).is_dir())
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
         if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
@@ -156,12 +166,12 @@ class CheckedFiles(QFileSystemModel):
         return super().headerData(section, orientation, role)
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
-        if role == Qt.ItemDataRole.CheckStateRole and index.column() == 0 and not self.isDir(index):
+        if role == Qt.ItemDataRole.CheckStateRole and index.column() == 0 and self.checkable(index):
             return Qt.CheckState.Checked if self.filePath(index) in self.checked else Qt.CheckState.Unchecked
         return super().data(index, role)
 
     def setData(self, index, value, role=Qt.ItemDataRole.EditRole):
-        if role == Qt.ItemDataRole.CheckStateRole and not self.isDir(index):
+        if role == Qt.ItemDataRole.CheckStateRole and self.checkable(index):
             path = self.filePath(index)
             if value in (Qt.CheckState.Checked, Qt.CheckState.Checked.value):
                 self.checked.add(path)
@@ -216,7 +226,7 @@ class FileBrowser(QWidget):
         self.tree.setIndentation(16)
         layout.addWidget(self.tree)
         bottom = QHBoxLayout()
-        self.summary = label('Nenhum arquivo selecionado', 'muted')
+        self.summary = label('Nada selecionado', 'muted')
         bottom.addWidget(self.summary)
         bottom.addStretch()
         bottom.addWidget(button('Limpar seleção', self.model.clear))
@@ -224,8 +234,11 @@ class FileBrowser(QWidget):
         self.model.selection_changed.connect(self.update_summary)
 
     def selected_folder(self):
-        """Pasta dos arquivos escolhidos para upload: a pasta marcada na árvore, a pasta
+        """Origem da compactação: a pasta marcada, a pasta destacada na árvore, a pasta
         comum dos arquivos marcados ou, por fim, a pasta aberta."""
+        folders = self.model.folders()
+        if folders:
+            return folders[0]
         index = self.tree.currentIndex()
         if index.isValid() and self.tree.selectionModel().isSelected(index):
             path = Path(self.model.filePath(index))
@@ -235,7 +248,10 @@ class FileBrowser(QWidget):
         return self.path.text() if self.path.text() and Path(self.path.text()).is_dir() else ''
 
     def update_summary(self):
-        self.summary.setText(f'{len(self.model.checked)} arquivo(s) selecionado(s)')
+        folders = len(self.model.folders())
+        files = len(self.model.checked) - folders
+        parts = [f'{files} arquivo(s)'] * bool(files) + [f'{folders} pasta(s)'] * bool(folders)
+        self.summary.setText(' e '.join(parts) + ' selecionado(s)' if parts else 'Nada selecionado')
 
     def navigate(self, path):
         if path and not Path(path).is_dir():

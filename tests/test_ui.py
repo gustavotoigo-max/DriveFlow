@@ -307,3 +307,42 @@ def test_compress_source_follows_upload_selection(tmp_path):
     browser.tree.setCurrentIndex(browser.model.index(str(folder)))
     assert browser.selected_folder() == str(folder)
     browser.close()
+
+
+def test_checked_folder_names_compression_and_uploads_with_structure(tmp_path, monkeypatch):
+    monkeypatch.setenv('DRIVEFLOW_DATA_DIR', str(tmp_path / 'state'))
+    app = QApplication.instance() or QApplication([])
+    folder = tmp_path / 'Obra 2026'
+    (folder / 'plantas').mkdir(parents=True)
+    (folder / 'memorial.pdf').write_bytes(b'1')
+    (folder / 'plantas' / 'a.dwg').write_bytes(b'2')
+    db, auth = Database(tmp_path / 'queue.sqlite3'), Auth()
+    auth.account_id = 'test-account'
+    manager = Manager(db, auth)
+    monkeypatch.setattr(manager, 'tick', lambda: None)
+    window = MainWindow(db, auth, manager)
+    window.timer.stop()
+    window.destination = ('dest', 'Meu Drive/Obras')
+    model = window.browser.model
+    assert not model.checkable(model.index('/'))  # Unidade inteira não.
+    model.setData(model.index(str(folder)), Qt.CheckState.Checked, Qt.ItemDataRole.CheckStateRole)
+    assert window.browser.selected_folder() == str(folder)
+    assert window.browser.summary.text() == '1 pasta(s) selecionado(s)'
+    created = []
+
+    class Drive:
+        def folder(self, parent, name):
+            created.append((parent, name))
+            return f'id-{name}'
+    monkeypatch.setattr(window, 'task', lambda fn, cb, **kw: cb(fn()))
+    monkeypatch.setattr(window, 'with_drive', lambda fn: fn(Drive()))
+    monkeypatch.setattr(window.folders, 'refresh_folder', lambda *a: None)
+    window.continue_button.click()
+    assert created == [('dest', 'Obra 2026'), ('id-Obra 2026', 'plantas')]
+    rows = {r['name']: r for r in db.all()}
+    assert rows['memorial.pdf']['folder_id'] == 'id-Obra 2026' and rows['memorial.pdf']['folder_name'] == 'Meu Drive/Obras/Obra 2026'
+    assert rows['a.dwg']['folder_id'] == 'id-plantas' and rows['a.dwg']['status'] == 'aguardando'
+    assert not model.checked
+    window.close()
+    manager.pool.shutdown()
+    db.conn.close()

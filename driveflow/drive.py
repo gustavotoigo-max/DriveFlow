@@ -78,6 +78,13 @@ class Drive:
         return self.checked(self.request('POST', API + '/files', params={'fields': 'id,name', 'supportsAllDrives': 'true'},
                                         json={'name': name, 'parents': [parent], 'mimeType': 'application/vnd.google-apps.folder'}))
 
+    def folder(self, parent, name):
+        """Pasta existente com esse nome no destino, ou uma nova."""
+        for row in self.duplicates(parent, name):
+            if row.get('mimeType') == 'application/vnd.google-apps.folder':
+                return row['id']
+        return self.create_folder(parent, name)['id']
+
     def generate_id(self):
         return self.checked(self.request('GET', API + '/files/generateIds', params={'count': 1, 'space': 'drive', 'type': 'files'}))['ids'][0]
 
