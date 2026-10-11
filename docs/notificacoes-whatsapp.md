@@ -28,7 +28,8 @@ Se a resposta não chegar em alguns minutos, mande a frase de novo.
 ## 2. Configurar no DriveFlow
 
 1. Abra **Configurações** e role até **Notificações WhatsApp**.
-2. No campo **Número**, digite o número com DDI e DDD, por exemplo `5511999998888`. Espaços, `+`, parênteses e traços são removidos sozinhos.
+2. No campo **Número**, digite o número com DDI e DDD, por exemplo `554899494404`. Espaços, `+`, parênteses e traços são removidos sozinhos.
+   - **Atenção ao 9:** muitos celulares brasileiros ficam registrados no WhatsApp sem o 9 da frente, e o CallMeBot só aceita o número do jeito que o WhatsApp registrou. Se o teste falhar, tire o 9 que vem depois do DDD (`5548999494404` vira `554899494404`).
 3. No campo **Apikey**, cole a apikey recebida do bot.
 4. Clique em **Adicionar número**. O número aparece em **Números cadastrados**. Repita para outros números.
 5. Clique em **Enviar teste**. Cada número deve receber `DriveFlow TESTE UPLOAD FINALIZADO`.
@@ -52,6 +53,6 @@ Cada envio, com ou sem erro, aparece na aba **Atividade** como `WHATSAPP_SENT` o
 
 | Sintoma | O que fazer |
 | --- | --- |
-| O teste diz "CallMeBot recusou o envio" | Confira o número com DDI e a apikey. Se continuar, refaça a ativação no celular. |
+| O teste diz "CallMeBot recusou o envio" | Tire o 9 que vem depois do DDD e teste de novo. Depois confira a apikey. Se continuar, refaça a ativação no celular. |
 | O teste diz "Sem conexão com o CallMeBot" | Verifique a internet ou se algum firewall bloqueia `api.callmebot.com`. |
 | O teste deu certo, mas a mensagem não chegou | O CallMeBot às vezes atrasa alguns minutos. Se nunca chegar, refaça a ativação. |

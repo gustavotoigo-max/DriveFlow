@@ -556,7 +556,7 @@ class MainWindow(QMainWindow):
         form = QFormLayout()
         form.setSpacing(12)
         self.whatsapp_phone = QLineEdit()
-        self.whatsapp_phone.setPlaceholderText('Número com DDI e DDD, ex.: 5511999998888')
+        self.whatsapp_phone.setPlaceholderText('DDI + DDD + número, como o WhatsApp registra (ex.: 554899494404, muitas vezes sem o 9)')
         self.whatsapp_apikey = QLineEdit()
         self.whatsapp_apikey.setPlaceholderText('Apikey recebida do CallMeBot')
         self.whatsapp_apikey.returnPressed.connect(self.add_whatsapp_number)
