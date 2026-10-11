@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
 
 import requests
 from .storage import data_dir
@@ -22,14 +23,24 @@ def version_tuple(value):
     return tuple(map(int, match.groups())) if match else None
 
 
-def select_update(releases, current):
+def installed_kind(executable=None):
+    """'pasta' para a instalação em pasta (DriveFlow.exe + _internal), 'portatil' para o exe único."""
+    exe = Path(executable or sys.executable)
+    return 'pasta' if (exe.parent / '_internal').is_dir() else 'portatil'
+
+
+def asset_name(number, kind):
+    return f'DriveFlow-v{number}-pasta.zip' if kind == 'pasta' else f'DriveFlow-v{number}-portatil.exe'
+
+
+def select_update(releases, current, kind='portatil'):
     candidates = []
     for release in releases:
         version = version_tuple(release.get('tag_name', ''))
         if release.get('draft') or release.get('prerelease') or not version or version <= version_tuple(current):
             continue
         number = '.'.join(map(str, version))
-        name = f'DriveFlow-v{number}-portatil.exe'
+        name = asset_name(number, kind)
         for asset in release.get('assets', []):
             # Exact names exclude installers (including private ones) and Android releases.
             digest = asset.get('digest') or ''
@@ -37,11 +48,12 @@ def select_update(releases, current):
             if (asset.get('name') == name and asset.get('browser_download_url') == expected_url
                     and re.fullmatch(r'sha256:[a-fA-F0-9]{64}', digest)
                     and 0 < asset.get('size', 0) <= MAX_SIZE and asset.get('state') == 'uploaded'):
-                candidates.append(dict(version=number, url=expected_url, sha256=digest[7:].lower(), size=asset['size']))
+                candidates.append(dict(version=number, url=expected_url, sha256=digest[7:].lower(), size=asset['size'], kind=kind))
     return max(candidates, key=lambda item: version_tuple(item['version']), default=None)
 
 
-def find_update(current):
+def find_update(current, kind=None):
+    kind = kind or installed_kind()
     releases = []
     # Multiple pages avoid confusing a newer Android release with the desktop version.
     for page in range(1, 6):
@@ -54,7 +66,7 @@ def find_update(current):
         releases.extend(batch)
         if len(batch) < 100:
             break
-    return select_update(releases, current)
+    return select_update(releases, current, kind)
 
 
 def verify_file(path, release):
@@ -65,15 +77,15 @@ def verify_file(path, release):
     if digest != release['sha256']:
         raise ValueError('A atualização não passou na verificação SHA-256.')
     with path.open('rb') as source:
-        if source.read(2) != b'MZ':
-            raise ValueError('A atualização não é um executável Windows.')
+        if source.read(2) != (b'PK' if release.get('kind') == 'pasta' else b'MZ'):
+            raise ValueError('A atualização não é um pacote do DriveFlow.')
 
 
 def download_update(release, progress=lambda value: None):
     updates = data_dir() / 'updates'
     updates.mkdir(exist_ok=True)
     folder = Path(tempfile.mkdtemp(prefix='download-', dir=updates))
-    target = folder / 'DriveFlow.exe'
+    target = folder / ('DriveFlow.zip' if release.get('kind') == 'pasta' else 'DriveFlow.exe')
     try:
         with requests.get(release['url'], stream=True, timeout=(10, 60), headers={'User-Agent': 'DriveFlow-Updater'}) as response:
             response.raise_for_status()
@@ -105,8 +117,21 @@ def prepare_install(path, release, target):
     job = path.parent / 'install.json'
     helper = path.parent / 'install.ps1'
     shutil.copyfile(Path(__file__).with_name('update_helper.ps1'), helper)
-    job.write_text(json.dumps(dict(target=str(target.resolve()), source=str(path.resolve()),
-                                  sha256=release['sha256'], version=release['version'], pid=os.getpid())), encoding='utf-8')
+    details = dict(target=str(target.resolve()), source=str(path.resolve()), sha256=release['sha256'],
+                   version=release['version'], pid=os.getpid(), kind=release.get('kind', 'portatil'))
+    if details['kind'] == 'pasta':
+        # A pasta nova é extraída antes de fechar o app; o helper só troca DriveFlow.exe e _internal.
+        folder = path.parent / 'pasta'
+        shutil.rmtree(folder, ignore_errors=True)
+        with zipfile.ZipFile(path) as archive:
+            for member in archive.namelist():
+                if member.startswith(('/', '\\')) or '..' in Path(member).parts:
+                    raise ValueError('Pacote de atualização inválido.')
+            archive.extractall(folder)
+        if not (folder / 'DriveFlow.exe').is_file() or not (folder / '_internal').is_dir():
+            raise ValueError('Pacote de atualização incompleto.')
+        details['folder'] = str(folder.resolve())
+    job.write_text(json.dumps(details), encoding='utf-8')
     return job
 
 

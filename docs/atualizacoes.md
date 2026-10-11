@@ -28,7 +28,9 @@ Execuções pelo código-fonte apenas consultam versões.
 
 Repositório fixo: `gustavotoigo-max/DriveFlow`. A release deve ser pública, não ser
 rascunho/prerelease e ter tag `vMAJOR.MINOR.PATCH` e anexo exato
-`DriveFlow-vMAJOR.MINOR.PATCH-portatil.exe`. O asset deve estar uploaded, ter tamanho
+`DriveFlow-vMAJOR.MINOR.PATCH-portatil.exe`, usado pelo exe portátil. A partir da 1.4.2 o release também leva
+`DriveFlow-vMAJOR.MINOR.PATCH-pasta.zip` (conteúdo de `dist\DriveFlow`: `DriveFlow.exe` e `_internal`), usado pelas instalações
+em pasta feitas pelo instalador; sem esse anexo, elas não recebem a versão pelo app. O asset deve estar uploaded, ter tamanho
 válido (até 300 MiB) e digest SHA-256 fornecido pela API GitHub. APKs, instaladores
 privados e versões antigas são ignorados. Nunca publique JSONs ou instaladores com chaves.
 

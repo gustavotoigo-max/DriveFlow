@@ -10,6 +10,10 @@ $log = Join-Path (Split-Path -Parent $JobFile) 'result.txt'
 $pending = $job.target + '.update-pending'
 $backup = $job.target + '.update-backup'
 $replaced = $false
+$folderMode = ($job.kind -eq 'pasta')
+$installDir = Split-Path -Parent $job.target
+$internal = Join-Path $installDir '_internal'
+$internalBackup = $internal + '.update-backup'
 try {
     # Wait only for the old process; never terminate an upload worker.
     $oldProcess = Get-Process -Id $job.pid -ErrorAction SilentlyContinue
@@ -21,21 +25,43 @@ try {
     if ($digest -ne $job.sha256) { throw 'SHA-256 invalido.' }
     # Validate that the staged executable starts before replacing the installed one.
     $smoke = Join-Path (Split-Path -Parent $JobFile) 'smoke.json'
-    $check = Start-Process -FilePath $job.source -ArgumentList ('--smoke-test "' + $smoke + '"') -WindowStyle Hidden -PassThru
+    $candidate = if ($folderMode) { Join-Path $job.folder 'DriveFlow.exe' } else { $job.source }
+    $check = Start-Process -FilePath $candidate -ArgumentList ('--smoke-test "' + $smoke + '"') -WindowStyle Hidden -PassThru
     if (-not $check.WaitForExit(60000)) { $check.Kill(); throw 'Teste da nova versao excedeu o prazo.' }
     if ($check.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $smoke)) { throw 'Nova versao nao iniciou.' }
     $result = Get-Content -LiteralPath $smoke -Raw | ConvertFrom-Json
     if (-not $result.ok -or $result.version -ne $job.version -or -not $result.monitoring_dependencies) { throw 'Teste da nova versao falhou.' }
-    Copy-Item -LiteralPath $job.source -Destination $pending -Force
-    # One-file PyInstaller has an outer process that may release the file a little later.
-    for ($attempt = 0; $attempt -lt 60; $attempt++) {
-        try { [System.IO.File]::Replace($pending, $job.target, $backup, $true); $replaced = $true; break }
-        catch { if ($attempt -eq 59) { throw }; Start-Sleep -Seconds 1 }
+    if ($folderMode) {
+        # Instalação em pasta: troca DriveFlow.exe e _internal; o resto (desinstalador) fica.
+        if (Test-Path -LiteralPath $internalBackup) { Remove-Item -LiteralPath $internalBackup -Recurse -Force }
+        if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Force }
+        for ($attempt = 0; $attempt -lt 60; $attempt++) {
+            try { Move-Item -LiteralPath $job.target -Destination $backup; break }
+            catch { if ($attempt -eq 59) { throw }; Start-Sleep -Seconds 1 }
+        }
+        $replaced = $true
+        if (Test-Path -LiteralPath $internal) { Move-Item -LiteralPath $internal -Destination $internalBackup }
+        Move-Item -LiteralPath (Join-Path $job.folder '_internal') -Destination $internal
+        Move-Item -LiteralPath (Join-Path $job.folder 'DriveFlow.exe') -Destination $job.target
+    } else {
+        Copy-Item -LiteralPath $job.source -Destination $pending -Force
+        # One-file PyInstaller has an outer process that may release the file a little later.
+        for ($attempt = 0; $attempt -lt 60; $attempt++) {
+            try { [System.IO.File]::Replace($pending, $job.target, $backup, $true); $replaced = $true; break }
+            catch { if ($attempt -eq 59) { throw }; Start-Sleep -Seconds 1 }
+        }
     }
     Start-Process -FilePath $job.target -WorkingDirectory (Split-Path -Parent $job.target)
     'Atualizacao instalada.' | Set-Content -LiteralPath $log -Encoding UTF8
 } catch {
-    if ($replaced) { [System.IO.File]::Replace($backup, $job.target, $null, $true) }
+    if ($replaced -and $folderMode) {
+        if (Test-Path -LiteralPath $internalBackup) {
+            if (Test-Path -LiteralPath $internal) { Remove-Item -LiteralPath $internal -Recurse -Force }
+            Move-Item -LiteralPath $internalBackup -Destination $internal
+        }
+        if (Test-Path -LiteralPath $job.target) { Remove-Item -LiteralPath $job.target -Force }
+        Move-Item -LiteralPath $backup -Destination $job.target
+    } elseif ($replaced) { [System.IO.File]::Replace($backup, $job.target, $null, $true) }
     ('Atualizacao nao aplicada: ' + $_.Exception.Message) | Set-Content -LiteralPath $log -Encoding UTF8
     # The previous executable is retained on failure and can still be opened manually.
     if (Test-Path -LiteralPath $job.target) { Start-Process -FilePath $job.target -WorkingDirectory (Split-Path -Parent $job.target) }

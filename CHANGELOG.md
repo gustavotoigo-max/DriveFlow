@@ -1,5 +1,10 @@
 # Histórico de versões
 
+## Desktop v1.4.2 — 11/10/2026
+
+- Abertura mais rápida: o instalador passa a instalar a versão em pasta, que não descompacta cerca de 690 MB a cada abertura (de ~2,8 s, com picos de 15 a 24 s, para ~1,3 s). O exe portátil continua igual.
+- O atualizador reconhece a instalação em pasta e baixa o pacote `DriveFlow-vX-pasta.zip`, trocando o `DriveFlow.exe` e a pasta `_internal`, com volta automática se a versão nova não abrir.
+
 ## Desktop v1.4.1 — 11/10/2026
 
 - Corrige a atualização pela interface: a nova versão fechava com "Failed to load Python DLL" porque herdava a pasta temporária da versão anterior. Vale para as próximas atualizações; quem está na 1.3.0 ou anterior instala esta versão manualmente uma vez.

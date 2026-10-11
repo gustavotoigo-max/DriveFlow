@@ -5,12 +5,16 @@ import pytest
 from driveflow import updater
 
 
-def release(version='1.3.0', **flags):
-    payload = b'MZtest executable'
-    return dict(tag_name='v'+version, **flags, assets=[dict(
-        name=f'DriveFlow-v{version}-portatil.exe', state='uploaded', size=len(payload),
-        digest='sha256:'+hashlib.sha256(payload).hexdigest(),
-        browser_download_url=f'https://github.com/{updater.REPO}/releases/download/v{version}/DriveFlow-v{version}-portatil.exe')])
+def asset(version, name, payload):
+    return dict(name=name, state='uploaded', size=len(payload), digest='sha256:'+hashlib.sha256(payload).hexdigest(),
+                browser_download_url=f'https://github.com/{updater.REPO}/releases/download/v{version}/{name}')
+
+
+def release(version='1.3.0', zip_payload=None, **flags):
+    assets = [asset(version, f'DriveFlow-v{version}-portatil.exe', b'MZtest executable')]
+    if zip_payload:
+        assets.append(asset(version, f'DriveFlow-v{version}-pasta.zip', zip_payload))
+    return dict(tag_name='v'+version, **flags, assets=assets)
 
 
 def test_selects_newest_stable_desktop_not_latest_android():
@@ -67,3 +71,46 @@ def test_install_helper_does_not_inherit_one_file_temp_folder():
     assert env == {'PATH': 'C:/Windows', 'PYINSTALLER_RESET_ENVIRONMENT': '1'}
     helper = Path(updater.__file__).with_name('update_helper.ps1').read_text(encoding='utf-8-sig')
     assert helper.index("PYINSTALLER_RESET_ENVIRONMENT") < helper.index('Start-Process')
+
+
+def folder_package(tmp_path):
+    import zipfile
+    path = tmp_path / 'pkg.zip'
+    with zipfile.ZipFile(path, 'w') as archive:
+        archive.writestr('DriveFlow.exe', b'MZnew')
+        archive.writestr('_internal/python314.dll', b'dll')
+    return path.read_bytes()
+
+
+def test_folder_install_updates_from_folder_package(tmp_path, monkeypatch):
+    install = tmp_path / 'Programs' / 'DriveFlow'
+    (install / '_internal').mkdir(parents=True)
+    (install / 'DriveFlow.exe').write_bytes(b'MZold')
+    assert updater.installed_kind(install / 'DriveFlow.exe') == 'pasta'
+    assert updater.installed_kind(tmp_path / 'DriveFlow-v1.4.1-portatil.exe') == 'portatil'
+    payload = folder_package(tmp_path)
+    # Versões sem o pacote em pasta não servem para a instalação em pasta.
+    assert updater.select_update([release('1.4.1')], '1.4.0', 'pasta') is None
+    info = updater.select_update([release('1.4.2', payload)], '1.4.1', 'pasta')
+    assert info['kind'] == 'pasta' and info['url'].endswith('DriveFlow-v1.4.2-pasta.zip')
+    assert updater.select_update([release('1.4.2', payload)], '1.4.1')['url'].endswith('portatil.exe')
+    monkeypatch.setattr(updater, 'data_dir', lambda: tmp_path)
+    monkeypatch.setattr(updater.requests, 'get', lambda *a, **kw: Response(payload))
+    path = updater.download_update(info)
+    job = updater.prepare_install(path, info, install / 'DriveFlow.exe')
+    details = __import__('json').loads(job.read_text(encoding='utf-8'))
+    assert details['kind'] == 'pasta' and (Path(details['folder']) / '_internal' / 'python314.dll').exists()
+    assert (install / 'DriveFlow.exe').read_bytes() == b'MZold'
+
+
+def test_folder_package_rejects_paths_outside_folder(tmp_path):
+    import zipfile
+    path = tmp_path / 'evil' / 'DriveFlow.zip'
+    path.parent.mkdir()
+    with zipfile.ZipFile(path, 'w') as archive:
+        archive.writestr('../fora.txt', b'x')
+    info = dict(kind='pasta', version='1.4.2', size=path.stat().st_size,
+                sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+    with pytest.raises(ValueError):
+        updater.prepare_install(path, info, tmp_path / 'DriveFlow.exe')
+    assert not (tmp_path / 'evil' / 'fora.txt').exists() and not (tmp_path / 'fora.txt').exists()
