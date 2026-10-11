@@ -432,7 +432,7 @@ class MainWindow(QMainWindow):
         if not self.destination or not self.auth.account_id:
             self.notice('Escolha a pasta de destino e clique em Usar esta pasta.')
             return
-        current = self.browser.path.text()
+        current = self.browser.selected_folder()
         destination, account = self.destination, self.auth.account_id
 
         def start(source, output, name, options, split, password):
@@ -444,7 +444,8 @@ class MainWindow(QMainWindow):
         options = self.db.setting('compress_options', {})
         output = options.get('output', '')
         dialog = CompressDialog(self, current if current and Path(current).is_dir() else '',
-                                output if output and Path(output).is_dir() else '', options, start)
+                                output if output and Path(output).is_dir() else '', options, start,
+                                self.compress_button.icon())
         if dialog.exec() and dialog.compression:
             self.compression = dialog.compression
             self.update_compress_button()

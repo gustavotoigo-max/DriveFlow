@@ -290,3 +290,20 @@ def test_drive_refresh_updates_every_open_folder_and_done_bar_color():
     done = image.pixelColor(20, 10)
     assert done.green() > done.blue() * 0.6 and done.green() > done.red()  # Azul esverdeado.
     bar.close()
+
+
+def test_compress_source_follows_upload_selection(tmp_path):
+    from driveflow.widgets import FileBrowser
+    app = QApplication.instance() or QApplication([])
+    folder = tmp_path / 'Obra'
+    folder.mkdir()
+    file = folder / 'planta.dwg'
+    file.write_bytes(b'x')
+    browser = FileBrowser()
+    browser.navigate(str(tmp_path))
+    assert browser.selected_folder() == str(tmp_path)  # Nada escolhido: pasta aberta.
+    browser.model.setData(browser.model.index(str(file)), Qt.CheckState.Checked, Qt.ItemDataRole.CheckStateRole)
+    assert browser.selected_folder() == str(folder)  # Pasta dos arquivos marcados.
+    browser.tree.setCurrentIndex(browser.model.index(str(folder)))
+    assert browser.selected_folder() == str(folder)
+    browser.close()

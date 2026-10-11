@@ -12,8 +12,8 @@ CUSTOM = 'Tamanho personalizado'
 
 class CompressDialog(dialogs.Dialog):
     """Opções passadas ao WinRAR. Uma pasta por vez; o dicionário é sempre 4096 KB."""
-    def __init__(self, parent, folder, output, options, start):
-        super().__init__(parent, 'Compactar com o WinRAR')
+    def __init__(self, parent, folder, output, options, start, icon=None):
+        super().__init__(parent, 'Compactar com o WinRAR', icon)
         self.start = start
         self.compression = None
         self.setMinimumWidth(520)

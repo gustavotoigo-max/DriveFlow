@@ -223,6 +223,17 @@ class FileBrowser(QWidget):
         layout.addLayout(bottom)
         self.model.selection_changed.connect(self.update_summary)
 
+    def selected_folder(self):
+        """Pasta dos arquivos escolhidos para upload: a pasta marcada na árvore, a pasta
+        comum dos arquivos marcados ou, por fim, a pasta aberta."""
+        index = self.tree.currentIndex()
+        if index.isValid() and self.tree.selectionModel().isSelected(index):
+            path = Path(self.model.filePath(index))
+            return str(path if self.model.isDir(index) else path.parent)
+        if self.model.checked:
+            return os.path.commonpath([str(Path(p).parent) for p in self.model.checked])
+        return self.path.text() if self.path.text() and Path(self.path.text()).is_dir() else ''
+
     def update_summary(self):
         self.summary.setText(f'{len(self.model.checked)} arquivo(s) selecionado(s)')
 

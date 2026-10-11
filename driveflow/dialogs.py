@@ -8,7 +8,7 @@ from .widgets import button, label
 
 
 class Dialog(QDialog):
-    def __init__(self, parent, title):
+    def __init__(self, parent, title, icon=None):
         super().__init__(parent)
         if not QApplication.instance().styleSheet():
             from .theme import stylesheet
@@ -20,6 +20,12 @@ class Dialog(QDialog):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
         self.title_bar = window_chrome.TitleBar(self, dialog=True)
+        if icon is not None and not icon.isNull():
+            self.setWindowIcon(icon)
+            mark = label('')
+            mark.setFixedSize(18, 18)
+            mark.setPixmap(icon.pixmap(18, 18))
+            self.title_bar.layout_.addWidget(mark)
         self.title_bar.layout_.addWidget(label(title, 'appName'))
         self.title_bar.layout_.addStretch()
         self.title_bar.finish()
