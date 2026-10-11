@@ -8,7 +8,8 @@ if not exist "driveflow\oauth_client.json" echo AVISO: driveflow\oauth_client.js
 if errorlevel 1 exit /b 1
 ".venv\Scripts\python.exe" -m PyInstaller --noconfirm DriveFlow.spec
 if errorlevel 1 exit /b 1
-for /f %%v in ('".venv\Scripts\python.exe" -c "import runpy;print(runpy.run_path('driveflow/version.py')['__version__'])"') do set DRIVEFLOW_VERSION=%%v
+for /f "tokens=2 delims='" %%v in (driveflow\version.py) do set DRIVEFLOW_VERSION=%%v
+if "%DRIVEFLOW_VERSION%"=="" echo ERRO: versao nao encontrada em driveflow\version.py& exit /b 1
 rem Pacote da versao em pasta: anexo do release usado pelo atualizador das instalacoes em pasta.
 powershell -NoProfile -Command "Compress-Archive -Path 'dist\DriveFlow\*' -DestinationPath 'dist\DriveFlow-v%DRIVEFLOW_VERSION%-pasta.zip' -Force"
 if errorlevel 1 exit /b 1
