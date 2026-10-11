@@ -211,6 +211,7 @@ class MainWindow(QMainWindow):
         browser_panel, browser_box = self.panel()
         browser_box.addWidget(self.browser)
         source_dest.addWidget(browser_panel)
+        self.browser_back = (self.browser.up_button, 'icons/voltar.svg')
         drive_panel, drive_box = self.panel()
         drive_title = QHBoxLayout()
         drive_title.setSpacing(8)
@@ -720,7 +721,7 @@ class MainWindow(QMainWindow):
             bar.update()
         for btn, filename in zip(self.nav, self.nav_assets):
             btn.setIcon(themed_icon(filename, accent))
-        for btn, asset in self.icon_buttons:
+        for btn, asset in self.icon_buttons + [self.browser_back]:
             btn.setIcon(themed_icon(asset, palette(theme)['muted']))
         self.action_icons = {name: themed_icon(name, accent) for name in ('play_24px.png', 'pausa_24px.png', 'stop.png', 'remover.png')}
 
